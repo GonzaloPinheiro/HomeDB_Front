@@ -1,23 +1,26 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
+  ChevronRight,
   Download,
   File as FileIcon,
+  Folder as FolderIcon,
   FolderOpen,
   FolderPlus,
+  Home,
   Trash2,
   Upload,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as filesService from '../../services/filesService';
-import { type FileDto } from '../../types/files';
+import * as foldersService from '../../services/foldersService';
+import { type GetFileItemDto, type GetFolderResponseDto } from '../../types/files';
 import { getErrorMessage } from '../../types/errors';
-import { colors } from '../../lib/theme';
-import { showComingSoon } from '../../components/ui/ComingSoonToast';
+import { colors, layout } from '../../lib/theme';
 
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB
 
-// ── Utilidades ──────────────────────────────────────────────────────────────
+// ── Utilidades ───────────────────────────────────────────────────────────────
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -43,87 +46,290 @@ function parseErrorCode(err: unknown): number {
   return 9999;
 }
 
+/** Clave de caché para el árbol de carpetas */
+function nodeKey(id: number | null): string {
+  return id === null ? 'root' : String(id);
+}
+
+/** Reconstruye el breadcrumb hasta `target` usando los nodos ya cargados en el árbol */
+function buildBreadcrumb(
+  target: GetFolderResponseDto,
+  treeChildren: Record<string, GetFolderResponseDto[]>,
+): BreadcrumbItem[] {
+  const ancestors: Array<{ id: number; name: string }> = [];
+  let currentId: number | null = target.id;
+
+  while (currentId !== null) {
+    let found: GetFolderResponseDto | undefined;
+    for (const list of Object.values(treeChildren)) {
+      found = list.find((f) => f.id === currentId);
+      if (found) break;
+    }
+    if (!found) break;
+    ancestors.unshift({ id: found.id, name: found.name });
+    currentId = found.parentFolderId;
+  }
+
+  return [{ id: null, name: 'Raíz' }, ...ancestors];
+}
+
+// ── Tipos locales ────────────────────────────────────────────────────────────
+
+type BreadcrumbItem = { id: number | null; name: string };
+
+type DeleteTarget =
+  | { type: 'file'; item: GetFileItemDto }
+  | { type: 'folder'; item: GetFolderResponseDto };
+
 // ── Componente principal ─────────────────────────────────────────────────────
 
 export default function FilesPage() {
-  const [files, setFiles] = useState<FileDto[]>([]);
-  const [uploadOpen, setUploadOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<FileDto | null>(null);
+  // Navegación
+  const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
+  const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([{ id: null, name: 'Raíz' }]);
 
-  useEffect(() => {
-    // TODO: Llamar a GET /api/files cuando el endpoint esté implementado en la API.
-    // El endpoint de listado de archivos no existe todavía en FilesController.
+  // Panel derecho
+  const [panelFolders, setPanelFolders] = useState<GetFolderResponseDto[]>([]);
+  const [panelFiles, setPanelFiles] = useState<GetFileItemDto[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Árbol izquierdo
+  const [treeChildren, setTreeChildren] = useState<Record<string, GetFolderResponseDto[]>>({});
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+
+  // Modales
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+
+  // ── Carga de contenido ───────────────────────────────────────────────────
+
+  const loadContent = useCallback(async (folderId: number | null) => {
+    setIsLoading(true);
+    try {
+      const param = folderId === null ? undefined : folderId;
+      const [folders, files] = await Promise.all([
+        foldersService.getFolders(param),
+        filesService.listFiles(param),
+      ]);
+      setPanelFolders(folders);
+      setPanelFiles(files);
+      setTreeChildren((prev) => ({ ...prev, [nodeKey(folderId)]: folders }));
+    } catch (err) {
+      toast.error(getErrorMessage(parseErrorCode(err)));
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  // isLoading siempre false por ahora; cambiar a useState(true) cuando exista GET /api/files
-  const isLoading = false;
+  useEffect(() => {
+    void loadContent(currentFolderId);
+  }, [currentFolderId, loadContent]);
 
-  function handleUploadSuccess(file: FileDto): void {
-    setFiles((prev) => [file, ...prev]);
+  // ── Navegación ───────────────────────────────────────────────────────────
+
+  /** Desde el árbol izquierdo: reconstruye el breadcrumb completo */
+  function navigateFromTree(folder: GetFolderResponseDto) {
+    setBreadcrumb(buildBreadcrumb(folder, treeChildren));
+    setExpandedNodes((prev) => new Set([...prev, String(folder.id)]));
+    setCurrentFolderId(folder.id);
+  }
+
+  /** Desde la tabla derecha (doble clic): siempre baja un nivel */
+  function navigateDeeper(folder: GetFolderResponseDto) {
+    setBreadcrumb((prev) => [...prev, { id: folder.id, name: folder.name }]);
+    setExpandedNodes((prev) => new Set([...prev, String(folder.id)]));
+    setCurrentFolderId(folder.id);
+  }
+
+  /** Desde el breadcrumb: sube/trunca al punto clicado */
+  function navigateToBreadcrumb(item: BreadcrumbItem) {
+    if (item.id === currentFolderId) return;
+    const idx = breadcrumb.findIndex((b) => b.id === item.id);
+    if (idx >= 0) setBreadcrumb((prev) => prev.slice(0, idx + 1));
+    setCurrentFolderId(item.id);
+  }
+
+  /** Raíz desde el árbol */
+  function navigateToRoot() {
+    if (currentFolderId === null) return;
+    setBreadcrumb([{ id: null, name: 'Raíz' }]);
+    setCurrentFolderId(null);
+  }
+
+  // ── Toggle del árbol ──────────────────────────────────────────────────────
+
+  async function handleTreeToggle(folder: GetFolderResponseDto): Promise<void> {
+    const key = String(folder.id);
+    const isExpanded = expandedNodes.has(key);
+
+    if (!isExpanded && treeChildren[key] === undefined) {
+      try {
+        const children = await foldersService.getFolders(folder.id);
+        setTreeChildren((prev) => ({ ...prev, [key]: children }));
+      } catch {
+        // Fallo silencioso en la expansión del árbol
+      }
+    }
+
+    setExpandedNodes((prev) => {
+      const next = new Set(prev);
+      if (isExpanded) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  // ── Crear carpeta ─────────────────────────────────────────────────────────
+
+  async function handleCreateFolder(name: string): Promise<void> {
+    const param = currentFolderId === null ? undefined : currentFolderId;
+    const created = await foldersService.createFolder(name, param);
+    // CreateFolderResponseDto y GetFolderResponseDto tienen la misma estructura
+    setPanelFolders((prev) => [...prev, created]);
+    const key = nodeKey(currentFolderId);
+    setTreeChildren((prev) => ({ ...prev, [key]: [...(prev[key] ?? []), created] }));
+    toast.success('Carpeta creada correctamente');
+    setCreateFolderOpen(false);
+  }
+
+  // ── Eliminar ──────────────────────────────────────────────────────────────
+
+  async function handleDeleteConfirm(): Promise<void> {
+    if (!deleteTarget) return;
+
+    if (deleteTarget.type === 'file') {
+      const file = deleteTarget.item;
+      try {
+        await filesService.deleteFile(file.id);
+        setPanelFiles((prev) => prev.filter((f) => f.id !== file.id));
+        toast.success(`"${file.fileName}" eliminado`);
+      } catch (err) {
+        toast.error(getErrorMessage(parseErrorCode(err)));
+      }
+    } else {
+      const folder = deleteTarget.item;
+      try {
+        await foldersService.deleteFolder(folder.id);
+        setPanelFolders((prev) => prev.filter((f) => f.id !== folder.id));
+        setTreeChildren((prev) => {
+          const parentKey = nodeKey(folder.parentFolderId);
+          const next = { ...prev };
+          next[parentKey] = (prev[parentKey] ?? []).filter((f) => f.id !== folder.id);
+          delete next[String(folder.id)];
+          return next;
+        });
+        setExpandedNodes((prev) => {
+          const next = new Set(prev);
+          next.delete(String(folder.id));
+          return next;
+        });
+        toast.success(`"${folder.name}" eliminada`);
+      } catch (err) {
+        toast.error(getErrorMessage(parseErrorCode(err)));
+      }
+    }
+
+    setDeleteTarget(null);
+  }
+
+  // ── Subida exitosa ────────────────────────────────────────────────────────
+
+  function handleUploadSuccess(file: GetFileItemDto): void {
+    // Solo agregar si se subió a la carpeta que estamos viendo ahora
+    if ((file.folderId ?? null) === currentFolderId) {
+      setPanelFiles((prev) => [file, ...prev]);
+    }
     setUploadOpen(false);
     toast.success('Archivo subido correctamente');
   }
 
-  async function handleDeleteConfirm(): Promise<void> {
-    if (!deleteTarget) return;
-    try {
-      await filesService.deleteFile(deleteTarget.id);
-      setFiles((prev) => prev.filter((f) => f.id !== deleteTarget.id));
-      toast.success(`"${deleteTarget.fileName}" eliminado`);
-    } catch (err) {
-      toast.error(getErrorMessage(parseErrorCode(err)));
-    } finally {
-      setDeleteTarget(null);
-    }
-  }
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  const isEmpty = !isLoading && panelFolders.length === 0 && panelFiles.length === 0;
 
   return (
-    <div>
-      {/* Cabecera */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 24,
+    <div
+      style={{
+        display: 'flex',
+        margin: -24,
+        minHeight: `calc(100vh - ${layout.headerHeight}px)`,
+      }}
+    >
+      {/* ── Panel izquierdo: árbol de carpetas ── */}
+      <FolderTreePanel
+        treeChildren={treeChildren}
+        expandedNodes={expandedNodes}
+        currentFolderId={currentFolderId}
+        onNavigateToRoot={navigateToRoot}
+        onNavigateToFolder={navigateFromTree}
+        onToggle={(folder) => {
+          void handleTreeToggle(folder);
         }}
-      >
-        <h2 style={{ fontSize: 20, fontWeight: 600, color: colors.textPrimary }}>
-          Mis archivos
-        </h2>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <OutlineButton onClick={showComingSoon} icon={<FolderPlus size={15} />}>
-            Nueva carpeta
-          </OutlineButton>
+        onDelete={(folder) => setDeleteTarget({ type: 'folder', item: folder })}
+        onCreateFolder={() => setCreateFolderOpen(true)}
+      />
+
+      {/* ── Panel derecho: contenido ── */}
+      <div style={{ flex: 1, minWidth: 0, padding: 24, display: 'flex', flexDirection: 'column' }}>
+        {/* Breadcrumb */}
+        <BreadcrumbBar items={breadcrumb} onNavigate={navigateToBreadcrumb} />
+
+        {/* Cabecera */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginTop: 12,
+            marginBottom: 24,
+          }}
+        >
+          <h2 style={{ fontSize: 20, fontWeight: 600, color: colors.textPrimary }}>
+            {breadcrumb[breadcrumb.length - 1]?.name ?? 'Mis archivos'}
+          </h2>
           <PrimaryButton onClick={() => setUploadOpen(true)} icon={<Upload size={15} />}>
             Subir archivo
           </PrimaryButton>
         </div>
+
+        {/* Contenido */}
+        {isLoading && <SkeletonTable />}
+        {isEmpty && (
+          <EmptyState isRoot={currentFolderId === null} onUpload={() => setUploadOpen(true)} />
+        )}
+        {!isLoading && !isEmpty && (
+          <CombinedTable
+            folders={panelFolders}
+            files={panelFiles}
+            onNavigateFolder={navigateDeeper}
+            onDeleteFolder={(folder) => setDeleteTarget({ type: 'folder', item: folder })}
+            onDownloadFile={(file) => {
+              void filesService.downloadFile(file.id, file.fileName);
+            }}
+            onDeleteFile={(file) => setDeleteTarget({ type: 'file', item: file })}
+          />
+        )}
       </div>
 
-      {/* Contenido */}
-      {isLoading && <SkeletonTable />}
-      {!isLoading && files.length === 0 && (
-        <EmptyState onUpload={() => setUploadOpen(true)} />
-      )}
-      {!isLoading && files.length > 0 && (
-        <FileTable
-          files={files}
-          onDownload={(f) => { void filesService.downloadFile(f.id, f.fileName); }}
-          onDelete={(f) => setDeleteTarget(f)}
-        />
-      )}
-
-      {/* Modales */}
+      {/* ── Modales ── */}
       {uploadOpen && (
         <UploadModal
+          currentFolderId={currentFolderId}
           onClose={() => setUploadOpen(false)}
           onSuccess={handleUploadSuccess}
         />
       )}
+      {createFolderOpen && (
+        <CreateFolderModal
+          onClose={() => setCreateFolderOpen(false)}
+          onConfirm={handleCreateFolder}
+        />
+      )}
       {deleteTarget && (
         <DeleteModal
-          filename={deleteTarget.fileName}
+          name={deleteTarget.type === 'file' ? deleteTarget.item.fileName : deleteTarget.item.name}
+          type={deleteTarget.type}
           onCancel={() => setDeleteTarget(null)}
           onConfirm={handleDeleteConfirm}
         />
@@ -132,154 +338,322 @@ export default function FilesPage() {
   );
 }
 
-// ── Botones de cabecera ─────────────────────────────────────────────────────
+// ── Panel izquierdo ───────────────────────────────────────────────────────────
 
-interface BtnProps {
-  onClick: () => void;
-  icon: ReactNode;
-  children: ReactNode;
+interface FolderTreePanelProps {
+  treeChildren: Record<string, GetFolderResponseDto[]>;
+  expandedNodes: Set<string>;
+  currentFolderId: number | null;
+  onNavigateToRoot: () => void;
+  onNavigateToFolder: (folder: GetFolderResponseDto) => void;
+  onToggle: (folder: GetFolderResponseDto) => void;
+  onDelete: (folder: GetFolderResponseDto) => void;
+  onCreateFolder: () => void;
 }
 
-function PrimaryButton({ onClick, icon, children }: BtnProps) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        height: 36,
-        padding: '0 14px',
-        backgroundColor: colors.accent,
-        color: '#ffffff',
-        border: 'none',
-        borderRadius: 8,
-        fontSize: 14,
-        fontWeight: 500,
-        cursor: 'pointer',
-      }}
-    >
-      {icon}
-      {children}
-    </button>
-  );
-}
+function FolderTreePanel({
+  treeChildren,
+  expandedNodes,
+  currentFolderId,
+  onNavigateToRoot,
+  onNavigateToFolder,
+  onToggle,
+  onDelete,
+  onCreateFolder,
+}: FolderTreePanelProps) {
+  const rootChildren = treeChildren['root'] ?? [];
+  const rootActive = currentFolderId === null;
 
-function OutlineButton({ onClick, icon, children }: BtnProps) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        height: 36,
-        padding: '0 14px',
-        backgroundColor: colors.bgSidebar,
-        color: colors.textSecondary,
-        border: `1px solid ${colors.border}`,
-        borderRadius: 8,
-        fontSize: 14,
-        fontWeight: 500,
-        cursor: 'pointer',
-      }}
-    >
-      {icon}
-      {children}
-    </button>
-  );
-}
-
-// ── Skeleton ─────────────────────────────────────────────────────────────────
-
-function SkeletonTable() {
   return (
     <div
       style={{
-        border: `1px solid ${colors.border}`,
-        borderRadius: 8,
-        overflow: 'hidden',
+        width: 220,
+        flexShrink: 0,
+        alignSelf: 'stretch',
+        backgroundColor: colors.bgSidebar,
+        borderRight: `1px solid ${colors.border}`,
+        display: 'flex',
+        flexDirection: 'column',
+        padding: 8,
+        overflowY: 'auto',
       }}
     >
+      {/* Entrada Raíz */}
       <div
+        onClick={onNavigateToRoot}
         style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 100px 150px 80px',
-          padding: '10px 16px',
-          backgroundColor: colors.bgSidebar,
-          borderBottom: `1px solid ${colors.border}`,
-          gap: 16,
-        }}
-      >
-        {['60%', '50px', '90px', '40px'].map((w, i) => (
-          <div key={i} className="hdb-skeleton" style={{ height: 13, width: w }} />
-        ))}
-      </div>
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div
-          key={i}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 100px 150px 80px',
-            padding: '14px 16px',
-            gap: 16,
-            borderBottom: i < 2 ? `1px solid ${colors.border}` : 'none',
-          }}
-        >
-          {['75%', '55px', '100px', '52px'].map((w, j) => (
-            <div key={j} className="hdb-skeleton" style={{ height: 14, width: w }} />
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── Estado vacío ─────────────────────────────────────────────────────────────
-
-function EmptyState({ onUpload }: { onUpload: () => void }) {
-  return (
-    <div style={{ textAlign: 'center', padding: '72px 0' }}>
-      <FolderOpen size={56} color={colors.border} />
-      <p
-        style={{ marginTop: 16, fontSize: 15, color: colors.textSecondary }}
-      >
-        No hay archivos todavía
-      </p>
-      <button
-        onClick={onUpload}
-        style={{
-          marginTop: 20,
-          display: 'inline-flex',
+          display: 'flex',
           alignItems: 'center',
           gap: 6,
-          height: 36,
-          padding: '0 16px',
-          backgroundColor: colors.accent,
-          color: '#ffffff',
-          border: 'none',
-          borderRadius: 8,
-          fontSize: 14,
-          fontWeight: 500,
+          height: 34,
+          padding: '0 8px',
+          borderRadius: 6,
+          cursor: 'pointer',
+          backgroundColor: rootActive ? colors.accentSoft : 'transparent',
+          color: rootActive ? colors.accentSoftText : colors.textPrimary,
+          fontSize: 13,
+          fontWeight: rootActive ? 600 : 400,
+          userSelect: 'none',
+          marginBottom: 2,
+        }}
+      >
+        <Home size={14} />
+        <span>Raíz</span>
+      </div>
+
+      {/* Hijos de raíz */}
+      <div style={{ flex: 1 }}>
+        {rootChildren.map((folder) => (
+          <FolderTreeItem
+            key={folder.id}
+            folder={folder}
+            depth={0}
+            treeChildren={treeChildren}
+            expandedNodes={expandedNodes}
+            currentFolderId={currentFolderId}
+            onNavigate={onNavigateToFolder}
+            onToggle={onToggle}
+            onDelete={onDelete}
+          />
+        ))}
+      </div>
+
+      {/* Botón nueva carpeta */}
+      <button
+        onClick={onCreateFolder}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          height: 32,
+          padding: '0 10px',
+          marginTop: 8,
+          width: '100%',
+          backgroundColor: 'transparent',
+          color: colors.textSecondary,
+          border: `1px dashed ${colors.border}`,
+          borderRadius: 6,
+          fontSize: 12,
           cursor: 'pointer',
         }}
       >
-        <Upload size={15} />
-        Subir archivo
+        <FolderPlus size={13} />
+        Nueva carpeta
       </button>
     </div>
   );
 }
 
-// ── Tabla de archivos ─────────────────────────────────────────────────────────
+// ── Nodo del árbol (recursivo) ────────────────────────────────────────────────
 
-interface FileTableProps {
-  files: FileDto[];
-  onDownload: (file: FileDto) => void;
-  onDelete: (file: FileDto) => void;
+interface FolderTreeItemProps {
+  folder: GetFolderResponseDto;
+  depth: number;
+  treeChildren: Record<string, GetFolderResponseDto[]>;
+  expandedNodes: Set<string>;
+  currentFolderId: number | null;
+  onNavigate: (folder: GetFolderResponseDto) => void;
+  onToggle: (folder: GetFolderResponseDto) => void;
+  onDelete: (folder: GetFolderResponseDto) => void;
 }
 
-function FileTable({ files, onDownload, onDelete }: FileTableProps) {
+function FolderTreeItem({
+  folder,
+  depth,
+  treeChildren,
+  expandedNodes,
+  currentFolderId,
+  onNavigate,
+  onToggle,
+  onDelete,
+}: FolderTreeItemProps) {
+  const [hovered, setHovered] = useState(false);
+  const key = String(folder.id);
+  const isExpanded = expandedNodes.has(key);
+  const isActive = currentFolderId === folder.id;
+  const children = treeChildren[key];
+
+  return (
+    <div>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 3,
+          paddingLeft: 4 + depth * 14,
+          paddingRight: 4,
+          height: 32,
+          borderRadius: 6,
+          cursor: 'pointer',
+          backgroundColor: isActive ? colors.accentSoft : hovered ? colors.surface : 'transparent',
+          color: isActive ? colors.accentSoftText : colors.textPrimary,
+          fontSize: 13,
+          fontWeight: isActive ? 500 : 400,
+          userSelect: 'none',
+        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onClick={() => onNavigate(folder)}
+      >
+        {/* ChevronRight / ChevronDown */}
+        <button
+          title={isExpanded ? 'Colapsar' : 'Expandir'}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle(folder);
+          }}
+          style={{
+            width: 16,
+            height: 16,
+            flexShrink: 0,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: colors.textSecondary,
+          }}
+        >
+          <ChevronRight
+            size={12}
+            style={{
+              transform: isExpanded ? 'rotate(90deg)' : 'none',
+              transition: 'transform 0.15s ease',
+            }}
+          />
+        </button>
+
+        <FolderIcon size={14} color={colors.accent} style={{ flexShrink: 0 }} />
+
+        <span
+          style={{
+            flex: 1,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {folder.name}
+        </span>
+
+        {/* Botón eliminar (solo en hover) */}
+        {hovered && (
+          <button
+            title="Eliminar carpeta"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(folder);
+            }}
+            style={{
+              width: 20,
+              height: 20,
+              flexShrink: 0,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: colors.error,
+              borderRadius: 4,
+            }}
+          >
+            <Trash2 size={12} />
+          </button>
+        )}
+      </div>
+
+      {/* Hijos recursivos */}
+      {isExpanded && children && children.length > 0 &&
+        children.map((child) => (
+          <FolderTreeItem
+            key={child.id}
+            folder={child}
+            depth={depth + 1}
+            treeChildren={treeChildren}
+            expandedNodes={expandedNodes}
+            currentFolderId={currentFolderId}
+            onNavigate={onNavigate}
+            onToggle={onToggle}
+            onDelete={onDelete}
+          />
+        ))}
+    </div>
+  );
+}
+
+// ── Breadcrumb ────────────────────────────────────────────────────────────────
+
+interface BreadcrumbBarProps {
+  items: BreadcrumbItem[];
+  onNavigate: (item: BreadcrumbItem) => void;
+}
+
+function BreadcrumbBar({ items, onNavigate }: BreadcrumbBarProps) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 2,
+        fontSize: 13,
+        color: colors.textSecondary,
+      }}
+    >
+      {items.map((item, i) => {
+        const isLast = i === items.length - 1;
+        return (
+          <span
+            key={`${String(item.id)}-${i}`}
+            style={{ display: 'flex', alignItems: 'center', gap: 2 }}
+          >
+            {i > 0 && <ChevronRight size={12} color={colors.border} />}
+            <button
+              onClick={() => {
+                if (!isLast) onNavigate(item);
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: '0 2px',
+                cursor: isLast ? 'default' : 'pointer',
+                fontSize: 13,
+                color: isLast ? colors.textPrimary : colors.textSecondary,
+                fontWeight: isLast ? 500 : 400,
+              }}
+            >
+              {item.name}
+            </button>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Tabla combinada (carpetas + archivos) ─────────────────────────────────────
+
+interface CombinedTableProps {
+  folders: GetFolderResponseDto[];
+  files: GetFileItemDto[];
+  onNavigateFolder: (folder: GetFolderResponseDto) => void;
+  onDeleteFolder: (folder: GetFolderResponseDto) => void;
+  onDownloadFile: (file: GetFileItemDto) => void;
+  onDeleteFile: (file: GetFileItemDto) => void;
+}
+
+function CombinedTable({
+  folders,
+  files,
+  onNavigateFolder,
+  onDeleteFolder,
+  onDownloadFile,
+  onDeleteFile,
+}: CombinedTableProps) {
   const thStyle: React.CSSProperties = {
     textAlign: 'left',
     padding: '10px 16px',
@@ -302,18 +676,27 @@ function FileTable({ files, onDownload, onDelete }: FileTableProps) {
           <tr>
             <th style={thStyle}>Nombre</th>
             <th style={{ ...thStyle, width: 100 }}>Tamaño</th>
-            <th style={{ ...thStyle, width: 160 }}>Fecha de subida</th>
+            <th style={{ ...thStyle, width: 160 }}>Fecha</th>
             <th style={{ ...thStyle, width: 90 }}>Acciones</th>
           </tr>
         </thead>
         <tbody>
-          {files.map((file, i) => (
+          {folders.map((folder, fi) => (
+            <FolderRow
+              key={`folder-${folder.id}`}
+              folder={folder}
+              isLast={fi === folders.length - 1 && files.length === 0}
+              onNavigate={() => onNavigateFolder(folder)}
+              onDelete={() => onDeleteFolder(folder)}
+            />
+          ))}
+          {files.map((file, fi) => (
             <FileRow
-              key={file.id}
+              key={`file-${file.id}`}
               file={file}
-              isLast={i === files.length - 1}
-              onDownload={() => onDownload(file)}
-              onDelete={() => onDelete(file)}
+              isLast={fi === files.length - 1}
+              onDownload={() => onDownloadFile(file)}
+              onDelete={() => onDeleteFile(file)}
             />
           ))}
         </tbody>
@@ -322,8 +705,65 @@ function FileTable({ files, onDownload, onDelete }: FileTableProps) {
   );
 }
 
+// ── Fila de carpeta ───────────────────────────────────────────────────────────
+
+interface FolderRowProps {
+  folder: GetFolderResponseDto;
+  isLast: boolean;
+  onNavigate: () => void;
+  onDelete: () => void;
+}
+
+function FolderRow({ folder, isLast, onNavigate, onDelete }: FolderRowProps) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <tr
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onDoubleClick={onNavigate}
+      title="Doble clic para abrir"
+      style={{
+        backgroundColor: hovered ? '#f9f9fb' : colors.bgMain,
+        borderBottom: isLast ? 'none' : `1px solid ${colors.border}`,
+        cursor: 'default',
+      }}
+    >
+      <td style={{ padding: '12px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <FolderIcon size={15} color={colors.accent} />
+          <span style={{ fontSize: 14, color: colors.textPrimary }}>{folder.name}</span>
+        </div>
+      </td>
+      <td style={{ padding: '12px 16px', fontSize: 14, color: colors.textSecondary }}>—</td>
+      <td
+        style={{
+          padding: '12px 16px',
+          fontSize: 14,
+          color: colors.textSecondary,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {formatDate(folder.createdAt)}
+      </td>
+      <td style={{ padding: '12px 16px' }}>
+        <IconButton
+          title="Eliminar carpeta"
+          onClick={onDelete}
+          iconColor={colors.error}
+          hoverBg="#fee2e2"
+        >
+          <Trash2 size={16} />
+        </IconButton>
+      </td>
+    </tr>
+  );
+}
+
+// ── Fila de archivo ───────────────────────────────────────────────────────────
+
 interface FileRowProps {
-  file: FileDto;
+  file: GetFileItemDto;
   isLast: boolean;
   onDownload: () => void;
   onDelete: () => void;
@@ -344,9 +784,7 @@ function FileRow({ file, isLast, onDownload, onDelete }: FileRowProps) {
       <td style={{ padding: '12px 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <FileIcon size={15} color={colors.textSecondary} />
-          <span style={{ fontSize: 14, color: colors.textPrimary }}>
-            {file.fileName}
-          </span>
+          <span style={{ fontSize: 14, color: colors.textPrimary }}>{file.fileName}</span>
         </div>
       </td>
       <td
@@ -393,6 +831,39 @@ function FileRow({ file, isLast, onDownload, onDelete }: FileRowProps) {
   );
 }
 
+// ── Botones ───────────────────────────────────────────────────────────────────
+
+interface BtnProps {
+  onClick: () => void;
+  icon: ReactNode;
+  children: ReactNode;
+}
+
+function PrimaryButton({ onClick, icon, children }: BtnProps) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        height: 36,
+        padding: '0 14px',
+        backgroundColor: colors.accent,
+        color: '#ffffff',
+        border: 'none',
+        borderRadius: 8,
+        fontSize: 14,
+        fontWeight: 500,
+        cursor: 'pointer',
+      }}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
 interface IconButtonProps {
   title: string;
   onClick: () => void;
@@ -425,6 +896,79 @@ function IconButton({ title, onClick, iconColor, hoverBg, children }: IconButton
     >
       {children}
     </button>
+  );
+}
+
+// ── Skeleton ──────────────────────────────────────────────────────────────────
+
+function SkeletonTable() {
+  return (
+    <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 100px 150px 80px',
+          padding: '10px 16px',
+          backgroundColor: colors.bgSidebar,
+          borderBottom: `1px solid ${colors.border}`,
+          gap: 16,
+        }}
+      >
+        {['60%', '50px', '90px', '40px'].map((w, i) => (
+          <div key={i} className="hdb-skeleton" style={{ height: 13, width: w }} />
+        ))}
+      </div>
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div
+          key={i}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 100px 150px 80px',
+            padding: '14px 16px',
+            gap: 16,
+            borderBottom: i < 2 ? `1px solid ${colors.border}` : 'none',
+          }}
+        >
+          {['75%', '55px', '100px', '52px'].map((w, j) => (
+            <div key={j} className="hdb-skeleton" style={{ height: 14, width: w }} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Estado vacío ──────────────────────────────────────────────────────────────
+
+function EmptyState({ isRoot, onUpload }: { isRoot: boolean; onUpload: () => void }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '72px 0' }}>
+      <FolderOpen size={56} color={colors.border} />
+      <p style={{ marginTop: 16, fontSize: 15, color: colors.textSecondary }}>
+        {isRoot ? 'No hay archivos todavía' : 'Esta carpeta está vacía'}
+      </p>
+      <button
+        onClick={onUpload}
+        style={{
+          marginTop: 20,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          height: 36,
+          padding: '0 16px',
+          backgroundColor: colors.accent,
+          color: '#ffffff',
+          border: 'none',
+          borderRadius: 8,
+          fontSize: 14,
+          fontWeight: 500,
+          cursor: 'pointer',
+        }}
+      >
+        <Upload size={15} />
+        Subir archivo
+      </button>
+    </div>
   );
 }
 
@@ -476,9 +1020,7 @@ function ModalCard({ title, onClose, children }: ModalCardProps) {
           marginBottom: 20,
         }}
       >
-        <h3 style={{ fontSize: 16, fontWeight: 600, color: colors.textPrimary }}>
-          {title}
-        </h3>
+        <h3 style={{ fontSize: 16, fontWeight: 600, color: colors.textPrimary }}>{title}</h3>
         <button
           onClick={onClose}
           style={{
@@ -501,11 +1043,12 @@ function ModalCard({ title, onClose, children }: ModalCardProps) {
 // ── Modal de subida ───────────────────────────────────────────────────────────
 
 interface UploadModalProps {
+  currentFolderId: number | null;
   onClose: () => void;
-  onSuccess: (file: FileDto) => void;
+  onSuccess: (file: GetFileItemDto) => void;
 }
 
-function UploadModal({ onClose, onSuccess }: UploadModalProps) {
+function UploadModal({ currentFolderId, onClose, onSuccess }: UploadModalProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -529,9 +1072,8 @@ function UploadModal({ onClose, onSuccess }: UploadModalProps) {
     setUploading(true);
     setError(null);
     try {
-      const dto = await filesService.uploadFile(selectedFile, undefined, (pct) =>
-        setProgress(pct),
-      );
+      const fParam = currentFolderId === null ? undefined : currentFolderId;
+      const dto = await filesService.uploadFile(selectedFile, fParam, (pct) => setProgress(pct));
       onSuccess(dto);
     } catch (err) {
       setError(getErrorMessage(parseErrorCode(err)));
@@ -566,40 +1108,18 @@ function UploadModal({ onClose, onSuccess }: UploadModalProps) {
             transition: 'background-color 0.15s, border-color 0.15s',
           }}
         >
-          <Upload
-            size={32}
-            color={isDragOver ? colors.accent : colors.textSecondary}
-          />
+          <Upload size={32} color={isDragOver ? colors.accent : colors.textSecondary} />
           {selectedFile ? (
             <div style={{ marginTop: 12 }}>
-              <p
-                style={{
-                  fontSize: 14,
-                  fontWeight: 500,
-                  color: colors.textPrimary,
-                }}
-              >
+              <p style={{ fontSize: 14, fontWeight: 500, color: colors.textPrimary }}>
                 {selectedFile.name}
               </p>
-              <p
-                style={{
-                  fontSize: 12,
-                  color: colors.textSecondary,
-                  marginTop: 4,
-                }}
-              >
+              <p style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>
                 {formatSize(selectedFile.size)}
               </p>
             </div>
           ) : (
-            <p
-              style={{
-                marginTop: 12,
-                fontSize: 14,
-                color: colors.textSecondary,
-                lineHeight: 1.5,
-              }}
-            >
+            <p style={{ marginTop: 12, fontSize: 14, color: colors.textSecondary, lineHeight: 1.5 }}>
               Arrastra un archivo aquí o haz clic para seleccionar
             </p>
           )}
@@ -651,20 +1171,11 @@ function UploadModal({ onClose, onSuccess }: UploadModalProps) {
 
         {/* Error */}
         {error && (
-          <p style={{ fontSize: 13, color: colors.error, marginTop: 12 }}>
-            {error}
-          </p>
+          <p style={{ fontSize: 13, color: colors.error, marginTop: 12 }}>{error}</p>
         )}
 
         {/* Botones */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 8,
-            marginTop: 24,
-          }}
-        >
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 24 }}>
           <button
             onClick={onClose}
             disabled={uploading}
@@ -683,7 +1194,9 @@ function UploadModal({ onClose, onSuccess }: UploadModalProps) {
             Cancelar
           </button>
           <button
-            onClick={() => { void handleUpload(); }}
+            onClick={() => {
+              void handleUpload();
+            }}
             disabled={!selectedFile || uploading}
             style={{
               height: 36,
@@ -716,37 +1229,143 @@ function UploadModal({ onClose, onSuccess }: UploadModalProps) {
   );
 }
 
+// ── Modal de nueva carpeta ────────────────────────────────────────────────────
+
+interface CreateFolderModalProps {
+  onClose: () => void;
+  onConfirm: (name: string) => Promise<void>;
+}
+
+function CreateFolderModal({ onClose, onConfirm }: CreateFolderModalProps) {
+  const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await onConfirm(trimmed);
+      // Si llega aquí sin error el modal se cierra desde el padre
+    } catch (err) {
+      setError(getErrorMessage(parseErrorCode(err)));
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Overlay onClose={onClose}>
+      <ModalCard title="Nueva carpeta" onClose={onClose}>
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Nombre de la carpeta"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void handleSubmit();
+          }}
+          style={{
+            width: '100%',
+            height: 38,
+            padding: '0 12px',
+            border: `1px solid ${colors.border}`,
+            borderRadius: 8,
+            fontSize: 14,
+            color: colors.textPrimary,
+            backgroundColor: colors.bgMain,
+            outline: 'none',
+            boxSizing: 'border-box',
+          }}
+        />
+
+        {error && (
+          <p style={{ fontSize: 13, color: colors.error, marginTop: 8 }}>{error}</p>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            style={{
+              height: 36,
+              padding: '0 16px',
+              backgroundColor: colors.bgMain,
+              color: colors.textPrimary,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 8,
+              fontSize: 14,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => {
+              void handleSubmit();
+            }}
+            disabled={!name.trim() || loading}
+            style={{
+              height: 36,
+              padding: '0 16px',
+              backgroundColor: colors.accent,
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 500,
+              cursor: !name.trim() || loading ? 'not-allowed' : 'pointer',
+              opacity: !name.trim() ? 0.5 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            {loading ? (
+              <>
+                <div className="hdb-spinner" />
+                Creando...
+              </>
+            ) : (
+              'Crear'
+            )}
+          </button>
+        </div>
+      </ModalCard>
+    </Overlay>
+  );
+}
+
 // ── Modal de confirmación de eliminación ──────────────────────────────────────
 
 interface DeleteModalProps {
-  filename: string;
+  name: string;
+  type: 'file' | 'folder';
   onCancel: () => void;
   onConfirm: () => Promise<void>;
 }
 
-function DeleteModal({ filename, onCancel, onConfirm }: DeleteModalProps) {
+function DeleteModal({ name, type, onCancel, onConfirm }: DeleteModalProps) {
   const [deleting, setDeleting] = useState(false);
 
   async function handleConfirm(): Promise<void> {
     setDeleting(true);
     await onConfirm();
+    // El padre llama a setDeleteTarget(null) tras onConfirm → modal desmontado
   }
+
+  const title = type === 'file' ? '¿Eliminar archivo?' : '¿Eliminar carpeta?';
 
   return (
     <Overlay onClose={onCancel}>
-      <ModalCard title="¿Eliminar archivo?" onClose={onCancel}>
+      <ModalCard title={title} onClose={onCancel}>
         <p style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 1.6 }}>
           Esta acción no se puede deshacer. ¿Seguro que quieres eliminar{' '}
-          <strong style={{ color: colors.textPrimary }}>{filename}</strong>?
+          <strong style={{ color: colors.textPrimary }}>{name}</strong>?
         </p>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 8,
-            marginTop: 24,
-          }}
-        >
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 24 }}>
           <button
             onClick={onCancel}
             disabled={deleting}
@@ -765,7 +1384,9 @@ function DeleteModal({ filename, onCancel, onConfirm }: DeleteModalProps) {
             Cancelar
           </button>
           <button
-            onClick={() => { void handleConfirm(); }}
+            onClick={() => {
+              void handleConfirm();
+            }}
             disabled={deleting}
             style={{
               height: 36,
