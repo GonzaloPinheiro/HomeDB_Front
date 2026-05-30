@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Database,
@@ -11,6 +12,97 @@ import {
 } from 'lucide-react';
 import { colors, layout } from '../../lib/theme';
 import { showComingSoon } from '../ui/ComingSoonToast';
+import { useStorage } from '../../context/StorageContext';
+import { type StorageStatisticsDto } from '../../types/files';
+
+// ── Widget de almacenamiento ──────────────────────────────────────────────────
+
+const STORAGE_LIMIT_MB = 10 * 1024; // 10 GB en MB
+
+function formatStorageSize(mb: number): string {
+  if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`;
+  if (mb >= 1) return `${mb.toFixed(1)} MB`;
+  return `${(mb * 1024).toFixed(0)} KB`;
+}
+
+interface StorageWidgetProps {
+  stats: StorageStatisticsDto | null;
+  isLoading: boolean;
+}
+
+function StorageWidget({ stats, isLoading }: StorageWidgetProps) {
+  if (isLoading || stats === null) {
+    return (
+      <div
+        style={{
+          padding: '12px 14px',
+          borderTop: `1px solid ${colors.border}`,
+          flexShrink: 0,
+        }}
+      >
+        <div className="hdb-skeleton" style={{ height: 11, width: '55%', borderRadius: 4, marginBottom: 10 }} />
+        <div className="hdb-skeleton" style={{ height: 5, borderRadius: 3, marginBottom: 8 }} />
+        <div className="hdb-skeleton" style={{ height: 11, width: '70%', borderRadius: 4 }} />
+      </div>
+    );
+  }
+
+  const pct = Math.min((stats.totalSizeMb / STORAGE_LIMIT_MB) * 100, 100);
+  const usedText = formatStorageSize(stats.totalSizeMb);
+
+  return (
+    <div
+      style={{
+        padding: '12px 14px',
+        borderTop: `1px solid ${colors.border}`,
+        flexShrink: 0,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          marginBottom: 8,
+        }}
+      >
+        <span style={{ fontSize: 11, fontWeight: 600, color: colors.textSecondary, letterSpacing: '0.02em' }}>
+          ALMACENAMIENTO
+        </span>
+        <span style={{ fontSize: 11, color: colors.textSecondary }}>
+          {stats.totalFiles} {stats.totalFiles === 1 ? 'archivo' : 'archivos'}
+        </span>
+      </div>
+
+      {/* Barra de progreso */}
+      <div
+        style={{
+          height: 5,
+          backgroundColor: colors.surface,
+          borderRadius: 3,
+          overflow: 'hidden',
+          marginBottom: 6,
+        }}
+      >
+        <div
+          style={{
+            height: '100%',
+            width: `${pct}%`,
+            backgroundColor: colors.accent,
+            borderRadius: 3,
+            transition: 'width 0.4s ease',
+          }}
+        />
+      </div>
+
+      <span style={{ fontSize: 11, color: colors.textSecondary }}>
+        {usedText} / 10 GB
+      </span>
+    </div>
+  );
+}
+
+// ── Tipos de navegación ────────────────────────────────────────────────────────
 
 interface ActiveItem {
   label: string;
@@ -37,6 +129,11 @@ const comingSoonItems: ComingSoonItem[] = [
 
 export default function Sidebar() {
   const location = useLocation();
+  const { stats, isLoading, refreshStats } = useStorage();
+
+  useEffect(() => {
+    refreshStats();
+  }, [refreshStats]);
 
   return (
     <aside
@@ -72,7 +169,7 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav style={{ padding: '12px 8px', flex: 1, overflowY: 'auto' }}>
+      <nav style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {activeItems.map((item) => {
           const active =
             location.pathname === item.path ||
@@ -146,6 +243,9 @@ export default function Sidebar() {
           </button>
         ))}
       </nav>
+
+      {/* Widget de almacenamiento */}
+      <StorageWidget stats={stats} isLoading={isLoading} />
     </aside>
   );
 }

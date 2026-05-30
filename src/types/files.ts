@@ -43,3 +43,10 @@ export interface DeleteFileResponseDto {
   fileId: number;
   fileName: string;
 }
+
+export interface StorageStatisticsDto {
+  totalFiles: number;
+  totalFolders: number;
+  totalSizeBytes: number;
+  totalSizeMb: number;
+}

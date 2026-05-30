@@ -17,6 +17,7 @@ import * as foldersService from '../../services/foldersService';
 import { type GetFileItemDto, type GetFolderResponseDto } from '../../types/files';
 import { getErrorMessage } from '../../types/errors';
 import { colors, layout } from '../../lib/theme';
+import { useStorage } from '../../context/StorageContext';
 
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB
 
@@ -84,6 +85,8 @@ type DeleteTarget =
 // ── Componente principal ─────────────────────────────────────────────────────
 
 export default function FilesPage() {
+  const { refreshStats } = useStorage();
+
   // Navegación
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([{ id: null, name: 'Raíz' }]);
@@ -204,6 +207,7 @@ export default function FilesPage() {
         await filesService.deleteFile(file.id);
         setPanelFiles((prev) => prev.filter((f) => f.id !== file.id));
         toast.success(`"${file.fileName}" eliminado`);
+        refreshStats();
       } catch (err) {
         toast.error(getErrorMessage(parseErrorCode(err)));
       }
@@ -242,6 +246,7 @@ export default function FilesPage() {
     }
     setUploadOpen(false);
     toast.success('Archivo subido correctamente');
+    refreshStats();
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
