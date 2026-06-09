@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { colors, layout } from '../../lib/theme';
 import { showComingSoon } from '../ui/ComingSoonToast';
+import EnvSelector from '../ui/EnvSelector';
 
 interface HeaderProps {
   pageTitle: string;
@@ -55,6 +56,9 @@ export default function Header({ pageTitle }: HeaderProps) {
       <span style={{ fontSize: 16, fontWeight: 600, color: colors.textPrimary }}>
         {pageTitle}
       </span>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <EnvSelector />
 
       <div ref={dropdownRef} style={{ position: 'relative' }}>
         {/* Avatar */}
@@ -117,6 +121,7 @@ export default function Header({ pageTitle }: HeaderProps) {
             <DropdownItem label="Cerrar sesión" onClick={handleLogout} danger />
           </div>
         )}
+      </div>
       </div>
     </header>
   );

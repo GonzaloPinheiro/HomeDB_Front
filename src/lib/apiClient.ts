@@ -1,16 +1,16 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import { ApiResponse } from '../types/api';
 import { TokenResponseDto } from '../types/auth';
+import { getActiveUrl } from './envConfig';
 
 const ACCESS_TOKEN_KEY = 'accessToken';
 const REFRESH_TOKEN_KEY = 'refreshToken';
 
-export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
-});
+export const apiClient = axios.create();
 
 // ── Request interceptor: adjunta el access token si existe ──────────────────
 apiClient.interceptors.request.use((config) => {
+  config.baseURL = getActiveUrl();
   const token = localStorage.getItem(ACCESS_TOKEN_KEY);
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -70,7 +70,7 @@ apiClient.interceptors.response.use(
 
     try {
       const { data } = await axios.post<ApiResponse<TokenResponseDto>>(
-        `${import.meta.env.VITE_API_URL}/api/auth/refreshToken`,
+        `${getActiveUrl()}/api/auth/refreshToken`,
         { refreshToken },
       );
 

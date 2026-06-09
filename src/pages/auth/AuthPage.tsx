@@ -11,6 +11,7 @@ import { useAuth } from '../../context/AuthContext';
 import * as authService from '../../services/authService';
 import { getErrorMessage } from '../../types/errors';
 import { colors } from '../../lib/theme';
+import EnvSelector from '../../components/ui/EnvSelector';
 
 type Tab = 'login' | 'register';
 
@@ -220,6 +221,12 @@ export default function AuthPage() {
             </SubmitButton>
           </form>
         )}
+      </div>
+
+      {/* Selector de entorno */}
+      <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 12, color: colors.textSecondary }}>Entorno</span>
+        <EnvSelector />
       </div>
     </div>
   );

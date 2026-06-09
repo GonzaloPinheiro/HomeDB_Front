@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import AuthPage from './pages/auth/AuthPage';
 import FilesPage from './pages/files/FilesPage';
+import AdminLogsPage from './pages/admin/AdminLogsPage';
 
 export default function App() {
   return (
@@ -12,6 +13,14 @@ export default function App() {
         element={
           <Layout pageTitle="Mis archivos">
             <FilesPage />
+          </Layout>
+        }
+      />
+      <Route
+        path="/admin/logs"
+        element={
+          <Layout pageTitle="Logs del sistema">
+            <AdminLogsPage />
           </Layout>
         }
       />

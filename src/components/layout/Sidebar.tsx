@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import {
   Database,
   FolderOpen,
@@ -129,6 +130,7 @@ const comingSoonItems: ComingSoonItem[] = [
 
 export default function Sidebar() {
   const location = useLocation();
+  const { user } = useAuth();
   const { stats, isLoading, refreshStats } = useStorage();
 
   useEffect(() => {
@@ -205,43 +207,70 @@ export default function Sidebar() {
           }}
         />
 
-        {comingSoonItems.map((item) => (
-          <button
-            key={item.label}
-            onClick={showComingSoon}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '8px 10px',
-              borderRadius: 6,
-              marginBottom: 2,
-              border: 'none',
-              backgroundColor: 'transparent',
-              cursor: 'pointer',
-              fontSize: 14,
-              color: colors.textSecondary,
-              textAlign: 'left',
-            }}
-          >
-            <item.icon size={17} />
-            <span style={{ flex: 1 }}>{item.label}</span>
-            <span
+        {comingSoonItems.map((item) => {
+          if (item.label === 'Logs del sistema' && user?.role === 'Admin') {
+            const isActive = location.pathname.startsWith('/admin/logs');
+            return (
+              <Link
+                key={item.label}
+                to="/admin/logs"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '8px 10px',
+                  borderRadius: 6,
+                  marginBottom: 2,
+                  fontSize: 14,
+                  fontWeight: isActive ? 600 : 400,
+                  color: isActive ? colors.accent : colors.textPrimary,
+                  backgroundColor: isActive ? colors.accentSoft : 'transparent',
+                }}
+              >
+                <item.icon size={17} />
+                {item.label}
+              </Link>
+            );
+          }
+
+          return (
+            <button
+              key={item.label}
+              onClick={showComingSoon}
               style={{
-                fontSize: 10,
-                fontWeight: 600,
-                color: colors.accentSoftText,
-                backgroundColor: colors.accentSoft,
-                padding: '2px 5px',
-                borderRadius: 4,
-                flexShrink: 0,
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '8px 10px',
+                borderRadius: 6,
+                marginBottom: 2,
+                border: 'none',
+                backgroundColor: 'transparent',
+                cursor: 'pointer',
+                fontSize: 14,
+                color: colors.textSecondary,
+                textAlign: 'left',
               }}
             >
-              Próx.
-            </span>
-          </button>
-        ))}
+              <item.icon size={17} />
+              <span style={{ flex: 1 }}>{item.label}</span>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: colors.accentSoftText,
+                  backgroundColor: colors.accentSoft,
+                  padding: '2px 5px',
+                  borderRadius: 4,
+                  flexShrink: 0,
+                }}
+              >
+                Próx.
+              </span>
+            </button>
+          );
+        })}
       </nav>
 
       {/* Widget de almacenamiento */}
