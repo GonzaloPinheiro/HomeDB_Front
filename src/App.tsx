@@ -3,6 +3,7 @@ import Layout from './components/layout/Layout';
 import AuthPage from './pages/auth/AuthPage';
 import FilesPage from './pages/files/FilesPage';
 import AdminLogsPage from './pages/admin/AdminLogsPage';
+import SystemMonitorPage from './pages/admin/SystemMonitorPage';
 
 export default function App() {
   return (
@@ -21,6 +22,14 @@ export default function App() {
         element={
           <Layout pageTitle="Logs del sistema">
             <AdminLogsPage />
+          </Layout>
+        }
+      />
+      <Route
+        path="/admin/monitor"
+        element={
+          <Layout pageTitle="Monitor del sistema">
+            <SystemMonitorPage />
           </Layout>
         }
       />

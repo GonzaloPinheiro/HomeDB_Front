@@ -3,17 +3,22 @@ import { ApiResponse } from '../types/api';
 import { TokenResponseDto } from '../types/auth';
 import { getActiveUrl } from './envConfig';
 
-const ACCESS_TOKEN_KEY = 'accessToken';
-const REFRESH_TOKEN_KEY = 'refreshToken';
+export const apiClient = axios.create({
+  withCredentials: true,
+});
 
-export const apiClient = axios.create();
+// Token de acceso guardado en memoria para funcionar sobre HTTP (sin flag Secure en cookies).
+let _accessToken: string | null = null;
 
-// ── Request interceptor: adjunta el access token si existe ──────────────────
+export function setAccessToken(token: string | null): void {
+  _accessToken = token;
+}
+
+// ── Request interceptor: URL base dinámica + Bearer token ────────────────────
 apiClient.interceptors.request.use((config) => {
   config.baseURL = getActiveUrl();
-  const token = localStorage.getItem(ACCESS_TOKEN_KEY);
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (_accessToken) {
+    config.headers['Authorization'] = `Bearer ${_accessToken}`;
   }
   return config;
 });
@@ -21,14 +26,14 @@ apiClient.interceptors.request.use((config) => {
 // ── Response interceptor: renueva el token ante un 401 ─────────────────────
 let isRefreshing = false;
 let pendingQueue: Array<{
-  resolve: (token: string) => void;
+  resolve: () => void;
   reject: (err: unknown) => void;
 }> = [];
 
-function processPendingQueue(error: unknown, token: string | null) {
+function processPendingQueue(error: unknown) {
   pendingQueue.forEach(({ resolve, reject }) => {
     if (error) reject(error);
-    else resolve(token!);
+    else resolve();
   });
   pendingQueue = [];
 }
@@ -40,56 +45,42 @@ apiClient.interceptors.response.use(
 
     const is401 = error.response?.status === 401;
     const alreadyRetried = originalRequest._retry;
-    const isRefreshEndpoint = originalRequest.url?.includes('/api/auth/refreshToken');
+    const url = originalRequest.url ?? '';
+    const isRefreshEndpoint = url.includes('/api/auth/refreshToken');
+    const isUnauthenticatedEndpoint =
+      url.includes('/api/auth/login') || url.includes('/api/auth/register');
 
-    if (!is401 || alreadyRetried || isRefreshEndpoint) {
+    if (!is401 || alreadyRetried || isRefreshEndpoint || isUnauthenticatedEndpoint) {
       return Promise.reject(error);
     }
 
     if (isRefreshing) {
-      return new Promise((resolve, reject) => {
+      return new Promise<void>((resolve, reject) => {
         pendingQueue.push({ resolve, reject });
-      }).then((token) => {
-        originalRequest.headers = {
-          ...originalRequest.headers,
-          Authorization: `Bearer ${token}`,
-        };
-        return apiClient(originalRequest);
-      });
+      }).then(() => apiClient(originalRequest));
     }
 
     originalRequest._retry = true;
     isRefreshing = true;
 
-    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-
-    if (!refreshToken) {
-      clearSessionAndRedirect();
-      return Promise.reject(error);
-    }
-
     try {
+      // La cookie RefreshToken se envía automáticamente por el navegador.
+      // Se pasa refreshToken vacío en el body para satisfacer el model binding;
+      // el backend lo sobreescribe con la cookie si está presente.
       const { data } = await axios.post<ApiResponse<TokenResponseDto>>(
         `${getActiveUrl()}/api/auth/refreshToken`,
-        { refreshToken },
+        { refreshToken: '' },
+        { withCredentials: true },
       );
 
       if (!data.result || !data.data) throw new Error('Refresh failed');
 
-      const { accessToken, refreshToken: newRefreshToken } = data.data;
-      localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-      localStorage.setItem(REFRESH_TOKEN_KEY, newRefreshToken);
-
-      apiClient.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
-      processPendingQueue(null, accessToken);
-
-      originalRequest.headers = {
-        ...originalRequest.headers,
-        Authorization: `Bearer ${accessToken}`,
-      };
+      setAccessToken(data.data.accessToken);
+      processPendingQueue(null);
       return apiClient(originalRequest);
     } catch (refreshError) {
-      processPendingQueue(refreshError, null);
+      setAccessToken(null);
+      processPendingQueue(refreshError);
       clearSessionAndRedirect();
       return Promise.reject(refreshError);
     } finally {
@@ -99,7 +90,5 @@ apiClient.interceptors.response.use(
 );
 
 function clearSessionAndRedirect() {
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
-  window.location.href = '/login';
+  window.location.href = '/auth';
 }

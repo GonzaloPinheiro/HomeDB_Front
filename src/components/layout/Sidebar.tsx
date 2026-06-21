@@ -208,29 +208,36 @@ export default function Sidebar() {
         />
 
         {comingSoonItems.map((item) => {
-          if (item.label === 'Logs del sistema' && user?.role === 'Admin') {
-            const isActive = location.pathname.startsWith('/admin/logs');
-            return (
-              <Link
-                key={item.label}
-                to="/admin/logs"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '8px 10px',
-                  borderRadius: 6,
-                  marginBottom: 2,
-                  fontSize: 14,
-                  fontWeight: isActive ? 600 : 400,
-                  color: isActive ? colors.accent : colors.textPrimary,
-                  backgroundColor: isActive ? colors.accentSoft : 'transparent',
-                }}
-              >
-                <item.icon size={17} />
-                {item.label}
-              </Link>
-            );
+          if (user?.role === 'Admin') {
+            const adminRoutes: Partial<Record<string, string>> = {
+              'Logs del sistema':    '/admin/logs',
+              'Monitor del sistema': '/admin/monitor',
+            };
+            const route = adminRoutes[item.label];
+            if (route) {
+              const isActive = location.pathname.startsWith(route);
+              return (
+                <Link
+                  key={item.label}
+                  to={route}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '8px 10px',
+                    borderRadius: 6,
+                    marginBottom: 2,
+                    fontSize: 14,
+                    fontWeight: isActive ? 600 : 400,
+                    color: isActive ? colors.accent : colors.textPrimary,
+                    backgroundColor: isActive ? colors.accentSoft : 'transparent',
+                  }}
+                >
+                  <item.icon size={17} />
+                  {item.label}
+                </Link>
+              );
+            }
           }
 
           return (

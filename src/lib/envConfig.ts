@@ -5,21 +5,37 @@ export const ENVIRONMENTS = {
   },
   raspberry: {
     label: 'Raspberry',
-    url: 'http://192.168.0.17:8080',
+    url: 'http://192.168.0.19:8080',
+  },
+  homedb: {
+    label: 'HomeDB',
+    url: 'https://homedb.gonzalopinheiro.dev',
   },
 } as const;
 
 export type EnvKey = keyof typeof ENVIRONMENTS;
 
-const STORAGE_KEY = 'selectedEnv';
+const COOKIE_NAME = 'selectedEnv';
+const PRODUCTION_HOST = 'homedb.gonzalopinheiro.dev';
+
+export function isProductionDomain(): boolean {
+  return typeof window !== 'undefined' && window.location.hostname === PRODUCTION_HOST;
+}
+
+function readEnvCookie(): EnvKey | null {
+  const match = document.cookie.match(/(?:^|;\s*)selectedEnv=([^;]*)/);
+  const val = match ? decodeURIComponent(match[1]) : null;
+  return val && val in ENVIRONMENTS ? (val as EnvKey) : null;
+}
 
 export function getActiveEnv(): EnvKey {
-  const stored = localStorage.getItem(STORAGE_KEY) as EnvKey | null;
-  return stored && stored in ENVIRONMENTS ? stored : 'local';
+  if (isProductionDomain()) return 'homedb';
+  return readEnvCookie() ?? 'local';
 }
 
 export function setActiveEnv(key: EnvKey): void {
-  localStorage.setItem(STORAGE_KEY, key);
+  const maxAge = 30 * 24 * 60 * 60;
+  document.cookie = `${COOKIE_NAME}=${encodeURIComponent(key)}; max-age=${maxAge}; path=/; SameSite=Lax`;
 }
 
 export function getActiveUrl(): string {

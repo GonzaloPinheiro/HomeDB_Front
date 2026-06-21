@@ -1,12 +1,9 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { apiClient } from '../lib/apiClient';
-import { ApiResponse } from '../types/api';
-import { LoginRequest, TokenResponseDto } from '../types/auth';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { apiClient, setAccessToken } from '../lib/apiClient';
+import { type ApiResponse } from '../types/api';
+import { type LoginRequest, type TokenResponseDto } from '../types/auth';
 
-const ACCESS_TOKEN_KEY = 'accessToken';
-const REFRESH_TOKEN_KEY = 'refreshToken';
-
-// ── Tipos ───────────────────────────────────────────────────────────────────
+// ── Tipos ────────────────────────────────────────────────────────────────────
 
 interface AuthUser {
   userId: number;
@@ -21,7 +18,6 @@ interface AuthContextValue {
   login: (credentials: LoginRequest) => Promise<void>;
   logout: () => Promise<void>;
   refreshToken: () => Promise<boolean>;
-  updateUserState: () => void;
 }
 
 // ── Decodificación del JWT sin librería externa ─────────────────────────────
@@ -36,7 +32,6 @@ interface JwtPayload {
 function decodeJwt(token: string): JwtPayload | null {
   try {
     const base64Payload = token.split('.')[1];
-    // base64url → base64 estándar
     const base64 = base64Payload.replace(/-/g, '+').replace(/_/g, '/');
     const json = decodeURIComponent(
       atob(base64)
@@ -48,10 +43,6 @@ function decodeJwt(token: string): JwtPayload | null {
   } catch {
     return null;
   }
-}
-
-function isTokenExpired(payload: JwtPayload): boolean {
-  return Date.now() / 1000 >= payload.exp;
 }
 
 function userFromPayload(payload: JwtPayload): AuthUser {
@@ -73,20 +64,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Al montar, intenta restaurar la sesión desde localStorage
+  // Al montar, intenta restaurar la sesión usando la cookie de refresh token.
+  // El navegador la envía automáticamente gracias a withCredentials: true.
   useEffect(() => {
-    const token = localStorage.getItem(ACCESS_TOKEN_KEY);
-    if (token) {
-      const payload = decodeJwt(token);
-      if (payload && !isTokenExpired(payload)) {
-        setUser(userFromPayload(payload));
-      } else {
-        // Token expirado: limpia para forzar re-login
-        localStorage.removeItem(ACCESS_TOKEN_KEY);
-        localStorage.removeItem(REFRESH_TOKEN_KEY);
+    void (async () => {
+      try {
+        const { data } = await apiClient.post<ApiResponse<TokenResponseDto>>(
+          '/api/auth/refreshToken',
+          { refreshToken: '' },
+        );
+        if (data.result && data.data) {
+          setAccessToken(data.data.accessToken);
+          const payload = decodeJwt(data.data.accessToken);
+          if (payload) setUser(userFromPayload(payload));
+        }
+      } catch {
+        // Sin sesión previa: el usuario deberá iniciar sesión
+      } finally {
+        setIsLoading(false);
       }
-    }
-    setIsLoading(false);
+    })();
   }, []);
 
   async function login(credentials: LoginRequest): Promise<void> {
@@ -94,59 +91,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       '/api/auth/login',
       credentials,
     );
-
     if (!data.result || !data.data) {
       throw new Error(String(data.errorCode ?? 9999));
     }
-
-    const { accessToken, refreshToken } = data.data;
-    localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-    localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-
-    const payload = decodeJwt(accessToken);
+    setAccessToken(data.data.accessToken);
+    const payload = decodeJwt(data.data.accessToken);
     if (payload) setUser(userFromPayload(payload));
   }
 
   async function logout(): Promise<void> {
-    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-    if (refreshToken) {
-      try {
-        await apiClient.post('/api/auth/logout', { refreshToken });
-      } catch {
-        // Si falla el logout en el servidor, se limpia igualmente en el cliente
-      }
+    setAccessToken(null);
+    try {
+      await apiClient.post('/api/auth/logout', { refreshToken: '' });
+    } catch {
+      // Si falla el logout en el servidor, se limpia igualmente el estado local
     }
-    localStorage.removeItem(ACCESS_TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
     setUser(null);
   }
 
-  function updateUserState(): void {
-    const token = localStorage.getItem(ACCESS_TOKEN_KEY);
-    if (!token) return;
-    const payload = decodeJwt(token);
-    if (payload && !isTokenExpired(payload)) {
-      setUser(userFromPayload(payload));
-    }
-  }
-
   async function refreshToken(): Promise<boolean> {
-    const storedRefresh = localStorage.getItem(REFRESH_TOKEN_KEY);
-    if (!storedRefresh) return false;
-
     try {
       const { data } = await apiClient.post<ApiResponse<TokenResponseDto>>(
         '/api/auth/refreshToken',
-        { refreshToken: storedRefresh },
+        { refreshToken: '' },
       );
-
       if (!data.result || !data.data) return false;
-
-      const { accessToken, refreshToken: newRefresh } = data.data;
-      localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-      localStorage.setItem(REFRESH_TOKEN_KEY, newRefresh);
-
-      const payload = decodeJwt(accessToken);
+      setAccessToken(data.data.accessToken);
+      const payload = decodeJwt(data.data.accessToken);
       if (payload) setUser(userFromPayload(payload));
       return true;
     } catch {
@@ -163,7 +134,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         refreshToken,
-        updateUserState,
       }}
     >
       {children}

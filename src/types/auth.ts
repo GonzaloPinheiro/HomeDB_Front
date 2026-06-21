@@ -24,3 +24,8 @@ export interface RegisterRequest {
 export interface RefreshTokenRequest {
   refreshToken: string;
 }
+
+export interface ChangePasswordRequest {
+  oldPassword: string;
+  newPassword: string;
+}

@@ -1,9 +1,6 @@
-import { apiClient } from '../lib/apiClient';
+import { apiClient, setAccessToken } from '../lib/apiClient';
 import { ApiResponse } from '../types/api';
-import { LoginRequest, RegisterRequest, TokenResponseDto, UserDto } from '../types/auth';
-
-const ACCESS_TOKEN_KEY = 'accessToken';
-const REFRESH_TOKEN_KEY = 'refreshToken';
+import { ChangePasswordRequest, LoginRequest, RegisterRequest, TokenResponseDto, UserDto } from '../types/auth';
 
 export async function login(credentials: LoginRequest): Promise<TokenResponseDto> {
   const { data } = await apiClient.post<ApiResponse<TokenResponseDto>>(
@@ -11,8 +8,7 @@ export async function login(credentials: LoginRequest): Promise<TokenResponseDto
     credentials,
   );
   if (!data.result || !data.data) throw new Error(String(data.errorCode ?? 9999));
-  localStorage.setItem(ACCESS_TOKEN_KEY, data.data.accessToken);
-  localStorage.setItem(REFRESH_TOKEN_KEY, data.data.refreshToken);
+  setAccessToken(data.data.accessToken);
   return data.data;
 }
 
@@ -23,4 +19,17 @@ export async function register(credentials: RegisterRequest): Promise<UserDto> {
   );
   if (!data.result || !data.data) throw new Error(String(data.errorCode ?? 9999));
   return data.data;
+}
+
+export async function changePassword(request: ChangePasswordRequest): Promise<void> {
+  const { data } = await apiClient.put<ApiResponse<unknown>>(
+    '/api/auth/changePassword',
+    request,
+  );
+  if (!data.result) throw new Error(String(data.errorCode ?? 9999));
+}
+
+export async function logout(): Promise<void> {
+  setAccessToken(null);
+  await apiClient.post('/api/auth/logout', { refreshToken: '' });
 }

@@ -13,10 +13,10 @@ import { getErrorMessage } from '../../types/errors';
 import { colors } from '../../lib/theme';
 import EnvSelector from '../../components/ui/EnvSelector';
 
-type Tab = 'login' | 'register';
+type Tab = 'login' | 'register' | 'change-password';
 
 export default function AuthPage() {
-  const { isAuthenticated, isLoading, updateUserState } = useAuth();
+  const { isAuthenticated, isLoading, login } = useAuth();
   const navigate = useNavigate();
 
   const [tab, setTab] = useState<Tab>('login');
@@ -29,6 +29,11 @@ export default function AuthPage() {
   const [regUsername, setRegUsername] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regConfirm, setRegConfirm] = useState('');
+
+  const [cpUsername, setCpUsername] = useState('');
+  const [cpOldPassword, setCpOldPassword] = useState('');
+  const [cpNewPassword, setCpNewPassword] = useState('');
+  const [cpConfirm, setCpConfirm] = useState('');
 
   if (isLoading) return null;
   if (isAuthenticated) return <Navigate to="/files" replace />;
@@ -51,8 +56,7 @@ export default function AuthPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await authService.login({ username: loginUsername, password: loginPassword });
-      updateUserState();
+      await login({ username: loginUsername, password: loginPassword });
       navigate('/files');
     } catch (err) {
       setError(getErrorMessage(parseErrorCode(err)));
@@ -72,6 +76,30 @@ export default function AuthPage() {
     try {
       await authService.register({ username: regUsername, password: regPassword });
       toast.success('Cuenta creada correctamente. Ahora inicia sesión.');
+      switchTab('login');
+    } catch (err) {
+      setError(getErrorMessage(parseErrorCode(err)));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleChangePassword(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    if (cpNewPassword !== cpConfirm) {
+      setError('Las contraseñas no coinciden');
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      await authService.login({ username: cpUsername, password: cpOldPassword });
+      try {
+        await authService.changePassword({ oldPassword: cpOldPassword, newPassword: cpNewPassword });
+      } finally {
+        try { await authService.logout(); } catch { /* ignorar error de logout */ }
+      }
+      toast.success('Contraseña cambiada correctamente. Ahora inicia sesión.');
       switchTab('login');
     } catch (err) {
       setError(getErrorMessage(parseErrorCode(err)));
@@ -122,33 +150,40 @@ export default function AuthPage() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
+            gridTemplateColumns: '1fr 1fr 1fr',
             backgroundColor: colors.surface,
             borderRadius: 8,
             padding: 4,
             marginBottom: 28,
           }}
         >
-          {(['login', 'register'] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => switchTab(t)}
-              style={{
-                padding: '7px 0',
-                fontSize: 14,
-                fontWeight: 500,
-                borderRadius: 6,
-                border: 'none',
-                cursor: 'pointer',
-                backgroundColor: tab === t ? colors.accent : 'transparent',
-                color: tab === t ? '#ffffff' : colors.textSecondary,
-                transition: 'background-color 0.15s, color 0.15s',
-              }}
-            >
-              {t === 'login' ? 'Iniciar sesión' : 'Registrarse'}
-            </button>
-          ))}
+          {(['login', 'register', 'change-password'] as const).map((t) => {
+            const labels: Record<Tab, string> = {
+              login: 'Iniciar sesión',
+              register: 'Registrarse',
+              'change-password': 'Cambiar clave',
+            };
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => switchTab(t)}
+                style={{
+                  padding: '7px 0',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  borderRadius: 6,
+                  border: 'none',
+                  cursor: 'pointer',
+                  backgroundColor: tab === t ? colors.accent : 'transparent',
+                  color: tab === t ? '#ffffff' : colors.textSecondary,
+                  transition: 'background-color 0.15s, color 0.15s',
+                }}
+              >
+                {labels[t]}
+              </button>
+            );
+          })}
         </div>
 
         {/* ── Login ── */}
@@ -218,6 +253,55 @@ export default function AuthPage() {
             {error && <ErrorMsg>{error}</ErrorMsg>}
             <SubmitButton loading={submitting} loadingText="Registrando...">
               Registrarse
+            </SubmitButton>
+          </form>
+        )}
+
+        {/* ── Cambiar clave ── */}
+        {tab === 'change-password' && (
+          <form
+            onSubmit={(e) => { void handleChangePassword(e); }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+          >
+            <Field label="Usuario">
+              <StyledInput
+                type="text"
+                autoComplete="username"
+                value={cpUsername}
+                onChange={(e) => setCpUsername(e.target.value)}
+                required
+              />
+            </Field>
+            <Field label="Contraseña actual">
+              <StyledInput
+                type="password"
+                autoComplete="current-password"
+                value={cpOldPassword}
+                onChange={(e) => setCpOldPassword(e.target.value)}
+                required
+              />
+            </Field>
+            <Field label="Nueva contraseña">
+              <StyledInput
+                type="password"
+                autoComplete="new-password"
+                value={cpNewPassword}
+                onChange={(e) => setCpNewPassword(e.target.value)}
+                required
+              />
+            </Field>
+            <Field label="Repetir nueva contraseña">
+              <StyledInput
+                type="password"
+                autoComplete="new-password"
+                value={cpConfirm}
+                onChange={(e) => setCpConfirm(e.target.value)}
+                required
+              />
+            </Field>
+            {error && <ErrorMsg>{error}</ErrorMsg>}
+            <SubmitButton loading={submitting} loadingText="Cambiando contraseña...">
+              Cambiar contraseña
             </SubmitButton>
           </form>
         )}
