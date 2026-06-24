@@ -9,6 +9,7 @@ import {
   TrendingUp,
   ScrollText,
   Terminal,
+  ClipboardList,
   type LucideIcon,
 } from 'lucide-react';
 import { colors, layout } from '../../lib/theme';
@@ -125,6 +126,7 @@ const comingSoonItems: ComingSoonItem[] = [
   { label: 'Registro de gastos', icon: Receipt },
   { label: 'Inversiones', icon: TrendingUp },
   { label: 'Logs del sistema', icon: ScrollText },
+  { label: 'Audit logs', icon: ClipboardList },
   { label: 'Scripts remotos', icon: Terminal },
 ];
 
@@ -211,6 +213,7 @@ export default function Sidebar() {
           if (user?.role === 'Admin') {
             const adminRoutes: Partial<Record<string, string>> = {
               'Logs del sistema':    '/admin/logs',
+              'Audit logs':          '/admin/auditlogs',
               'Monitor del sistema': '/admin/monitor',
             };
             const route = adminRoutes[item.label];
