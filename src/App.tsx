@@ -4,6 +4,7 @@ import AuthPage from './pages/auth/AuthPage';
 import FilesPage from './pages/files/FilesPage';
 import AdminLogsPage from './pages/admin/AdminLogsPage';
 import AdminAuditLogsPage from './pages/admin/AdminAuditLogsPage';
+import AdminUsersPage from './pages/admin/AdminUsersPage';
 import SystemMonitorPage from './pages/admin/SystemMonitorPage';
 
 export default function App() {
@@ -23,6 +24,14 @@ export default function App() {
         element={
           <Layout pageTitle="Logs del sistema">
             <AdminLogsPage />
+          </Layout>
+        }
+      />
+      <Route
+        path="/admin/users"
+        element={
+          <Layout pageTitle="Gestión de usuarios">
+            <AdminUsersPage />
           </Layout>
         }
       />

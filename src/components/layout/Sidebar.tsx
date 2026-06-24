@@ -10,6 +10,7 @@ import {
   ScrollText,
   Terminal,
   ClipboardList,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 import { colors, layout } from '../../lib/theme';
@@ -123,6 +124,7 @@ const activeItems: ActiveItem[] = [
 
 const comingSoonItems: ComingSoonItem[] = [
   { label: 'Monitor del sistema', icon: Activity },
+  { label: 'Gestión de usuarios', icon: Users },
   { label: 'Registro de gastos', icon: Receipt },
   { label: 'Inversiones', icon: TrendingUp },
   { label: 'Logs del sistema', icon: ScrollText },
@@ -212,9 +214,10 @@ export default function Sidebar() {
         {comingSoonItems.map((item) => {
           if (user?.role === 'Admin') {
             const adminRoutes: Partial<Record<string, string>> = {
-              'Logs del sistema':    '/admin/logs',
-              'Audit logs':          '/admin/auditlogs',
-              'Monitor del sistema': '/admin/monitor',
+              'Logs del sistema':     '/admin/logs',
+              'Audit logs':           '/admin/auditlogs',
+              'Monitor del sistema':  '/admin/monitor',
+              'Gestión de usuarios':  '/admin/users',
             };
             const route = adminRoutes[item.label];
             if (route) {
