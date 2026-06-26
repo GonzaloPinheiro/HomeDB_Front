@@ -5,6 +5,7 @@ import FilesPage from './pages/files/FilesPage';
 import AdminLogsPage from './pages/admin/AdminLogsPage';
 import AdminAuditLogsPage from './pages/admin/AdminAuditLogsPage';
 import AdminUsersPage from './pages/admin/AdminUsersPage';
+import AdminRolesPage from './pages/admin/AdminRolesPage';
 import SystemMonitorPage from './pages/admin/SystemMonitorPage';
 
 export default function App() {
@@ -40,6 +41,14 @@ export default function App() {
         element={
           <Layout pageTitle="Audit logs">
             <AdminAuditLogsPage />
+          </Layout>
+        }
+      />
+      <Route
+        path="/admin/roles"
+        element={
+          <Layout pageTitle="Gestión de roles">
+            <AdminRolesPage />
           </Layout>
         }
       />

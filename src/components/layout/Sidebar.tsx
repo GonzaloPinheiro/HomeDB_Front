@@ -11,6 +11,7 @@ import {
   Terminal,
   ClipboardList,
   Users,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react';
 import { colors, layout } from '../../lib/theme';
@@ -125,6 +126,7 @@ const activeItems: ActiveItem[] = [
 const comingSoonItems: ComingSoonItem[] = [
   { label: 'Monitor del sistema', icon: Activity },
   { label: 'Gestión de usuarios', icon: Users },
+  { label: 'Gestión de roles', icon: ShieldCheck },
   { label: 'Registro de gastos', icon: Receipt },
   { label: 'Inversiones', icon: TrendingUp },
   { label: 'Logs del sistema', icon: ScrollText },
@@ -218,6 +220,7 @@ export default function Sidebar() {
               'Audit logs':           '/admin/auditlogs',
               'Monitor del sistema':  '/admin/monitor',
               'Gestión de usuarios':  '/admin/users',
+              'Gestión de roles':     '/admin/roles',
             };
             const route = adminRoutes[item.label];
             if (route) {

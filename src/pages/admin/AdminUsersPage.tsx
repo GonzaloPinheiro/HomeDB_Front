@@ -14,7 +14,9 @@ import { colors } from '../../lib/theme';
 import { useAuth } from '../../context/AuthContext';
 import { getErrorMessage } from '../../types/errors';
 import * as usersService from '../../services/usersService';
+import * as rolesService from '../../services/rolesService';
 import type { UserSummaryDto, GetUsersResponseDto } from '../../types/users';
+import type { RoleResponseDto } from '../../types/roles';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -239,10 +241,15 @@ export default function AdminUsersPage() {
   const [userToDelete, setUserToDelete] = useState<UserSummaryDto | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
 
+  const [availableRoles, setAvailableRoles] = useState<RoleResponseDto[]>([]);
+
   const PAGE_SIZE = 50;
 
   useEffect(() => {
     void fetchUsers(1, '', '', '', '', '');
+    void rolesService.getRoles().then((data) =>
+      setAvailableRoles([...data].sort((a, b) => a.roleId - b.roleId)),
+    );
   }, []);
 
   if (user?.role !== 'Admin') return <Navigate to="/files" replace />;
@@ -384,8 +391,9 @@ export default function AdminUsersPage() {
             style={{ ...inputStyle, minWidth: 140 }}
           >
             <option value="">Todos los roles</option>
-            <option value="Admin">Admin</option>
-            <option value="User">User</option>
+            {availableRoles.map((r) => (
+              <option key={r.roleId} value={r.roleName}>{r.roleName}</option>
+            ))}
           </select>
           <input
             type="datetime-local"
