@@ -22,8 +22,17 @@ export async function createFolder(
   parentFolderId?: number,
 ): Promise<CreateFolderResponseDto> {
   const { data } = await apiClient.post<ApiResponse<CreateFolderResponseDto>>(
-    '/api/folders/create',
+    '/api/folders',
     { name, parentFolderId: parentFolderId ?? null },
+  );
+  if (!data.result || !data.data) throw new Error(String(data.errorCode ?? 9999));
+  return data.data;
+}
+
+export async function renameFolder(folderId: number, newName: string): Promise<GetFolderResponseDto> {
+  const { data } = await apiClient.patch<ApiResponse<GetFolderResponseDto>>(
+    `/api/folders/${folderId}`,
+    { newFolderName: newName },
   );
   if (!data.result || !data.data) throw new Error(String(data.errorCode ?? 9999));
   return data.data;

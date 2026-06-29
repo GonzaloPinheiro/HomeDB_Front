@@ -13,7 +13,7 @@ export async function getHistory(from: Date, to: Date): Promise<SystemMetricsDto
 
 export async function getLastMetric(): Promise<SystemMetricsDto> {
   const { data } = await apiClient.get<ApiResponse<SystemMetricsDto>>(
-    '/api/system-metrics/lastMetric',
+    '/api/system-metrics/last-metric',
   );
   if (!data.result || !data.data) throw new Error(String(data.errorCode ?? 9999));
   return data.data;

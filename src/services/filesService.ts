@@ -6,7 +6,7 @@ export async function listFiles(folderId?: number): Promise<GetFileItemDto[]> {
   const params: Record<string, number> = {};
   if (folderId !== undefined) params.folderId = folderId;
 
-  const { data } = await apiClient.get<ApiResponse<GetFileItemDto[]>>('/api/files/listFiles', {
+  const { data } = await apiClient.get<ApiResponse<GetFileItemDto[]>>('/api/files', {
     params,
   });
   if (!data.result || !data.data) throw new Error(String(data.errorCode ?? 9999));
@@ -23,7 +23,7 @@ export async function uploadFile(
   if (folderId !== undefined) formData.append('folderId', String(folderId));
 
   // FileDto incluye ownerId en la respuesta; lo ignoramos al devolver GetFileItemDto
-  const { data } = await apiClient.post<ApiResponse<FileDto>>('/api/files/uploadFile', formData, {
+  const { data } = await apiClient.post<ApiResponse<FileDto>>('/api/files', formData, {
     onUploadProgress: (event) => {
       if (onProgress && event.total) {
         onProgress(Math.round((event.loaded * 100) / event.total));
@@ -37,7 +37,7 @@ export async function uploadFile(
 }
 
 export async function downloadFile(id: number, filename: string): Promise<void> {
-  const response = await apiClient.get<Blob>(`/api/files/${id}/downloadFile`, {
+  const response = await apiClient.get<Blob>(`/api/files/${id}`, {
     responseType: 'blob',
   });
 
@@ -52,6 +52,6 @@ export async function downloadFile(id: number, filename: string): Promise<void> 
 }
 
 export async function deleteFile(id: number): Promise<void> {
-  const { data } = await apiClient.delete<ApiResponse<unknown>>(`/api/files/${id}/deleteFile`);
+  const { data } = await apiClient.delete<ApiResponse<unknown>>(`/api/files/${id}`);
   if (!data.result) throw new Error(String(data.errorCode ?? 9999));
 }

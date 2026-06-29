@@ -7,6 +7,7 @@ import {
   FolderOpen,
   FolderPlus,
   Home,
+  Pencil,
   Trash2,
   Upload,
   X,
@@ -104,6 +105,7 @@ export default function FilesPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [renameTarget, setRenameTarget] = useState<GetFolderResponseDto | null>(null);
 
   // ── Carga de contenido ───────────────────────────────────────────────────
 
@@ -237,6 +239,22 @@ export default function FilesPage() {
     setDeleteTarget(null);
   }
 
+  // ── Renombrar carpeta ─────────────────────────────────────────────────────
+
+  async function handleRenameConfirm(newName: string): Promise<void> {
+    if (!renameTarget) return;
+    const updated = await foldersService.renameFolder(renameTarget.id, newName);
+    setPanelFolders((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
+    const parentKey = nodeKey(updated.parentFolderId);
+    setTreeChildren((prev) => ({
+      ...prev,
+      [parentKey]: (prev[parentKey] ?? []).map((f) => (f.id === updated.id ? updated : f)),
+    }));
+    setBreadcrumb((prev) => prev.map((b) => (b.id === updated.id ? { ...b, name: updated.name } : b)));
+    toast.success(`Carpeta renombrada a "${updated.name}"`);
+    setRenameTarget(null);
+  }
+
   // ── Subida exitosa ────────────────────────────────────────────────────────
 
   function handleUploadSuccess(file: GetFileItemDto): void {
@@ -272,6 +290,7 @@ export default function FilesPage() {
           void handleTreeToggle(folder);
         }}
         onDelete={(folder) => setDeleteTarget({ type: 'folder', item: folder })}
+        onRename={(folder) => setRenameTarget(folder)}
         onCreateFolder={() => setCreateFolderOpen(true)}
       />
 
@@ -308,6 +327,7 @@ export default function FilesPage() {
             folders={panelFolders}
             files={panelFiles}
             onNavigateFolder={navigateDeeper}
+            onRenameFolder={(folder) => setRenameTarget(folder)}
             onDeleteFolder={(folder) => setDeleteTarget({ type: 'folder', item: folder })}
             onDownloadFile={(file) => {
               void filesService.downloadFile(file.id, file.fileName);
@@ -339,6 +359,13 @@ export default function FilesPage() {
           onConfirm={handleDeleteConfirm}
         />
       )}
+      {renameTarget && (
+        <RenameFolderModal
+          currentName={renameTarget.name}
+          onClose={() => setRenameTarget(null)}
+          onConfirm={handleRenameConfirm}
+        />
+      )}
     </div>
   );
 }
@@ -352,6 +379,7 @@ interface FolderTreePanelProps {
   onNavigateToRoot: () => void;
   onNavigateToFolder: (folder: GetFolderResponseDto) => void;
   onToggle: (folder: GetFolderResponseDto) => void;
+  onRename: (folder: GetFolderResponseDto) => void;
   onDelete: (folder: GetFolderResponseDto) => void;
   onCreateFolder: () => void;
 }
@@ -363,6 +391,7 @@ function FolderTreePanel({
   onNavigateToRoot,
   onNavigateToFolder,
   onToggle,
+  onRename,
   onDelete,
   onCreateFolder,
 }: FolderTreePanelProps) {
@@ -418,6 +447,7 @@ function FolderTreePanel({
             currentFolderId={currentFolderId}
             onNavigate={onNavigateToFolder}
             onToggle={onToggle}
+            onRename={onRename}
             onDelete={onDelete}
           />
         ))}
@@ -459,6 +489,7 @@ interface FolderTreeItemProps {
   currentFolderId: number | null;
   onNavigate: (folder: GetFolderResponseDto) => void;
   onToggle: (folder: GetFolderResponseDto) => void;
+  onRename: (folder: GetFolderResponseDto) => void;
   onDelete: (folder: GetFolderResponseDto) => void;
 }
 
@@ -470,6 +501,7 @@ function FolderTreeItem({
   currentFolderId,
   onNavigate,
   onToggle,
+  onRename,
   onDelete,
 }: FolderTreeItemProps) {
   const [hovered, setHovered] = useState(false);
@@ -543,31 +575,56 @@ function FolderTreeItem({
           {folder.name}
         </span>
 
-        {/* Botón eliminar (solo en hover) */}
+        {/* Botones de acción (solo en hover) */}
         {hovered && (
-          <button
-            title="Eliminar carpeta"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(folder);
-            }}
-            style={{
-              width: 20,
-              height: 20,
-              flexShrink: 0,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: colors.error,
-              borderRadius: 4,
-            }}
-          >
-            <Trash2 size={12} />
-          </button>
+          <>
+            <button
+              title="Renombrar carpeta"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRename(folder);
+              }}
+              style={{
+                width: 20,
+                height: 20,
+                flexShrink: 0,
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: colors.textSecondary,
+                borderRadius: 4,
+              }}
+            >
+              <Pencil size={12} />
+            </button>
+            <button
+              title="Eliminar carpeta"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(folder);
+              }}
+              style={{
+                width: 20,
+                height: 20,
+                flexShrink: 0,
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: colors.error,
+                borderRadius: 4,
+              }}
+            >
+              <Trash2 size={12} />
+            </button>
+          </>
         )}
       </div>
 
@@ -583,6 +640,7 @@ function FolderTreeItem({
             currentFolderId={currentFolderId}
             onNavigate={onNavigate}
             onToggle={onToggle}
+            onRename={onRename}
             onDelete={onDelete}
           />
         ))}
@@ -646,6 +704,7 @@ interface CombinedTableProps {
   folders: GetFolderResponseDto[];
   files: GetFileItemDto[];
   onNavigateFolder: (folder: GetFolderResponseDto) => void;
+  onRenameFolder: (folder: GetFolderResponseDto) => void;
   onDeleteFolder: (folder: GetFolderResponseDto) => void;
   onDownloadFile: (file: GetFileItemDto) => void;
   onDeleteFile: (file: GetFileItemDto) => void;
@@ -655,6 +714,7 @@ function CombinedTable({
   folders,
   files,
   onNavigateFolder,
+  onRenameFolder,
   onDeleteFolder,
   onDownloadFile,
   onDeleteFile,
@@ -692,6 +752,7 @@ function CombinedTable({
               folder={folder}
               isLast={fi === folders.length - 1 && files.length === 0}
               onNavigate={() => onNavigateFolder(folder)}
+              onRename={() => onRenameFolder(folder)}
               onDelete={() => onDeleteFolder(folder)}
             />
           ))}
@@ -716,10 +777,11 @@ interface FolderRowProps {
   folder: GetFolderResponseDto;
   isLast: boolean;
   onNavigate: () => void;
+  onRename: () => void;
   onDelete: () => void;
 }
 
-function FolderRow({ folder, isLast, onNavigate, onDelete }: FolderRowProps) {
+function FolderRow({ folder, isLast, onNavigate, onRename, onDelete }: FolderRowProps) {
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -752,14 +814,24 @@ function FolderRow({ folder, isLast, onNavigate, onDelete }: FolderRowProps) {
         {formatDate(folder.createdAt)}
       </td>
       <td style={{ padding: '12px 16px' }}>
-        <IconButton
-          title="Eliminar carpeta"
-          onClick={onDelete}
-          iconColor={colors.error}
-          hoverBg="#fee2e2"
-        >
-          <Trash2 size={16} />
-        </IconButton>
+        <div style={{ display: 'flex', gap: 2 }}>
+          <IconButton
+            title="Renombrar carpeta"
+            onClick={onRename}
+            iconColor={colors.textSecondary}
+            hoverBg={colors.surface}
+          >
+            <Pencil size={16} />
+          </IconButton>
+          <IconButton
+            title="Eliminar carpeta"
+            onClick={onDelete}
+            iconColor={colors.error}
+            hoverBg="#fee2e2"
+          >
+            <Trash2 size={16} />
+          </IconButton>
+        </div>
       </td>
     </tr>
   );
@@ -1335,6 +1407,115 @@ function CreateFolderModal({ onClose, onConfirm }: CreateFolderModalProps) {
               </>
             ) : (
               'Crear'
+            )}
+          </button>
+        </div>
+      </ModalCard>
+    </Overlay>
+  );
+}
+
+// ── Modal de renombrar carpeta ────────────────────────────────────────────────
+
+interface RenameFolderModalProps {
+  currentName: string;
+  onClose: () => void;
+  onConfirm: (newName: string) => Promise<void>;
+}
+
+function RenameFolderModal({ currentName, onClose, onConfirm }: RenameFolderModalProps) {
+  const [name, setName] = useState(currentName);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === currentName) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await onConfirm(trimmed);
+    } catch (err) {
+      setError(getErrorMessage(parseErrorCode(err)));
+      setLoading(false);
+    }
+  }
+
+  const isUnchanged = name.trim() === currentName || !name.trim();
+
+  return (
+    <Overlay onClose={onClose}>
+      <ModalCard title="Renombrar carpeta" onClose={onClose}>
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Nuevo nombre"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void handleSubmit();
+          }}
+          style={{
+            width: '100%',
+            height: 38,
+            padding: '0 12px',
+            border: `1px solid ${colors.border}`,
+            borderRadius: 8,
+            fontSize: 14,
+            color: colors.textPrimary,
+            backgroundColor: colors.bgMain,
+            outline: 'none',
+            boxSizing: 'border-box',
+          }}
+        />
+
+        {error && (
+          <p style={{ fontSize: 13, color: colors.error, marginTop: 8 }}>{error}</p>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            style={{
+              height: 36,
+              padding: '0 16px',
+              backgroundColor: colors.bgMain,
+              color: colors.textPrimary,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 8,
+              fontSize: 14,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => { void handleSubmit(); }}
+            disabled={isUnchanged || loading}
+            style={{
+              height: 36,
+              padding: '0 16px',
+              backgroundColor: colors.accent,
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 500,
+              cursor: isUnchanged || loading ? 'not-allowed' : 'pointer',
+              opacity: isUnchanged ? 0.5 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            {loading ? (
+              <>
+                <div className="hdb-spinner" />
+                Guardando...
+              </>
+            ) : (
+              'Guardar'
             )}
           </button>
         </div>

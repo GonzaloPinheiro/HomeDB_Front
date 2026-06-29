@@ -21,7 +21,7 @@ export async function getLogsHealth(): Promise<LogHealthDto> {
 }
 
 export async function getErrorSummary(hours: number): Promise<LogErrorSummaryItemDto[]> {
-  const res = await apiClient.get<ApiResponse<LogErrorSummaryItemDto[]>>('/api/admin/logs/errorSummary', {
+  const res = await apiClient.get<ApiResponse<LogErrorSummaryItemDto[]>>('/api/admin/logs/error-summary', {
     params: { hours },
   });
   if (!res.data.result || res.data.data === null) throw new Error(String(res.data.errorCode ?? 9999));
