@@ -4,6 +4,7 @@ import {
   Download,
   File as FileIcon,
   Folder as FolderIcon,
+  FolderInput,
   FolderOpen,
   FolderPlus,
   Home,
@@ -47,6 +48,21 @@ function parseErrorCode(err: unknown): number {
   }
   return 9999;
 }
+
+const treeActionBtn: React.CSSProperties = {
+  width: 20,
+  height: 20,
+  flexShrink: 0,
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  padding: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: colors.textSecondary,
+  borderRadius: 4,
+};
 
 /** Clave de caché para el árbol de carpetas */
 function nodeKey(id: number | null): string {
@@ -106,6 +122,7 @@ export default function FilesPage() {
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [renameTarget, setRenameTarget] = useState<GetFolderResponseDto | null>(null);
+  const [moveTarget, setMoveTarget] = useState<GetFolderResponseDto | null>(null);
 
   // ── Carga de contenido ───────────────────────────────────────────────────
 
@@ -255,6 +272,38 @@ export default function FilesPage() {
     setRenameTarget(null);
   }
 
+  // ── Mover carpeta ─────────────────────────────────────────────────────────
+
+  async function handleMoveConfirm(destFolderId: number | null): Promise<void> {
+    if (!moveTarget) return;
+    const updated = await foldersService.moveFolder(moveTarget.id, destFolderId);
+
+    const sourceKey = nodeKey(moveTarget.parentFolderId);
+    const destKey = nodeKey(destFolderId);
+
+    setTreeChildren((prev) => {
+      const next = { ...prev };
+      if (next[sourceKey]) next[sourceKey] = next[sourceKey].filter((f) => f.id !== updated.id);
+      if (next[destKey] !== undefined) next[destKey] = [...next[destKey], updated];
+      return next;
+    });
+
+    if (currentFolderId === moveTarget.parentFolderId) {
+      setPanelFolders((prev) => prev.filter((f) => f.id !== updated.id));
+    } else if (currentFolderId === destFolderId) {
+      setPanelFolders((prev) => [...prev, updated]);
+    }
+
+    // Si la carpeta movida era un ancestro de la ubicación actual, volver a raíz
+    if (breadcrumb.some((b) => b.id === moveTarget.id)) {
+      setBreadcrumb([{ id: null, name: 'Raíz' }]);
+      setCurrentFolderId(null);
+    }
+
+    toast.success(`"${updated.name}" movida correctamente`);
+    setMoveTarget(null);
+  }
+
   // ── Subida exitosa ────────────────────────────────────────────────────────
 
   function handleUploadSuccess(file: GetFileItemDto): void {
@@ -291,6 +340,7 @@ export default function FilesPage() {
         }}
         onDelete={(folder) => setDeleteTarget({ type: 'folder', item: folder })}
         onRename={(folder) => setRenameTarget(folder)}
+        onMove={(folder) => setMoveTarget(folder)}
         onCreateFolder={() => setCreateFolderOpen(true)}
       />
 
@@ -328,6 +378,7 @@ export default function FilesPage() {
             files={panelFiles}
             onNavigateFolder={navigateDeeper}
             onRenameFolder={(folder) => setRenameTarget(folder)}
+            onMoveFolder={(folder) => setMoveTarget(folder)}
             onDeleteFolder={(folder) => setDeleteTarget({ type: 'folder', item: folder })}
             onDownloadFile={(file) => {
               void filesService.downloadFile(file.id, file.fileName);
@@ -366,6 +417,13 @@ export default function FilesPage() {
           onConfirm={handleRenameConfirm}
         />
       )}
+      {moveTarget && (
+        <MoveFolderModal
+          folder={moveTarget}
+          onClose={() => setMoveTarget(null)}
+          onConfirm={handleMoveConfirm}
+        />
+      )}
     </div>
   );
 }
@@ -380,6 +438,7 @@ interface FolderTreePanelProps {
   onNavigateToFolder: (folder: GetFolderResponseDto) => void;
   onToggle: (folder: GetFolderResponseDto) => void;
   onRename: (folder: GetFolderResponseDto) => void;
+  onMove: (folder: GetFolderResponseDto) => void;
   onDelete: (folder: GetFolderResponseDto) => void;
   onCreateFolder: () => void;
 }
@@ -392,6 +451,7 @@ function FolderTreePanel({
   onNavigateToFolder,
   onToggle,
   onRename,
+  onMove,
   onDelete,
   onCreateFolder,
 }: FolderTreePanelProps) {
@@ -448,6 +508,7 @@ function FolderTreePanel({
             onNavigate={onNavigateToFolder}
             onToggle={onToggle}
             onRename={onRename}
+            onMove={onMove}
             onDelete={onDelete}
           />
         ))}
@@ -490,6 +551,7 @@ interface FolderTreeItemProps {
   onNavigate: (folder: GetFolderResponseDto) => void;
   onToggle: (folder: GetFolderResponseDto) => void;
   onRename: (folder: GetFolderResponseDto) => void;
+  onMove: (folder: GetFolderResponseDto) => void;
   onDelete: (folder: GetFolderResponseDto) => void;
 }
 
@@ -502,6 +564,7 @@ function FolderTreeItem({
   onNavigate,
   onToggle,
   onRename,
+  onMove,
   onDelete,
 }: FolderTreeItemProps) {
   const [hovered, setHovered] = useState(false);
@@ -580,47 +643,22 @@ function FolderTreeItem({
           <>
             <button
               title="Renombrar carpeta"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRename(folder);
-              }}
-              style={{
-                width: 20,
-                height: 20,
-                flexShrink: 0,
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: colors.textSecondary,
-                borderRadius: 4,
-              }}
+              onClick={(e) => { e.stopPropagation(); onRename(folder); }}
+              style={treeActionBtn}
             >
               <Pencil size={12} />
             </button>
             <button
+              title="Mover carpeta"
+              onClick={(e) => { e.stopPropagation(); onMove(folder); }}
+              style={treeActionBtn}
+            >
+              <FolderInput size={12} />
+            </button>
+            <button
               title="Eliminar carpeta"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(folder);
-              }}
-              style={{
-                width: 20,
-                height: 20,
-                flexShrink: 0,
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: colors.error,
-                borderRadius: 4,
-              }}
+              onClick={(e) => { e.stopPropagation(); onDelete(folder); }}
+              style={{ ...treeActionBtn, color: colors.error }}
             >
               <Trash2 size={12} />
             </button>
@@ -641,6 +679,7 @@ function FolderTreeItem({
             onNavigate={onNavigate}
             onToggle={onToggle}
             onRename={onRename}
+            onMove={onMove}
             onDelete={onDelete}
           />
         ))}
@@ -705,6 +744,7 @@ interface CombinedTableProps {
   files: GetFileItemDto[];
   onNavigateFolder: (folder: GetFolderResponseDto) => void;
   onRenameFolder: (folder: GetFolderResponseDto) => void;
+  onMoveFolder: (folder: GetFolderResponseDto) => void;
   onDeleteFolder: (folder: GetFolderResponseDto) => void;
   onDownloadFile: (file: GetFileItemDto) => void;
   onDeleteFile: (file: GetFileItemDto) => void;
@@ -715,6 +755,7 @@ function CombinedTable({
   files,
   onNavigateFolder,
   onRenameFolder,
+  onMoveFolder,
   onDeleteFolder,
   onDownloadFile,
   onDeleteFile,
@@ -753,6 +794,7 @@ function CombinedTable({
               isLast={fi === folders.length - 1 && files.length === 0}
               onNavigate={() => onNavigateFolder(folder)}
               onRename={() => onRenameFolder(folder)}
+              onMove={() => onMoveFolder(folder)}
               onDelete={() => onDeleteFolder(folder)}
             />
           ))}
@@ -778,10 +820,11 @@ interface FolderRowProps {
   isLast: boolean;
   onNavigate: () => void;
   onRename: () => void;
+  onMove: () => void;
   onDelete: () => void;
 }
 
-function FolderRow({ folder, isLast, onNavigate, onRename, onDelete }: FolderRowProps) {
+function FolderRow({ folder, isLast, onNavigate, onRename, onMove, onDelete }: FolderRowProps) {
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -815,20 +858,13 @@ function FolderRow({ folder, isLast, onNavigate, onRename, onDelete }: FolderRow
       </td>
       <td style={{ padding: '12px 16px' }}>
         <div style={{ display: 'flex', gap: 2 }}>
-          <IconButton
-            title="Renombrar carpeta"
-            onClick={onRename}
-            iconColor={colors.textSecondary}
-            hoverBg={colors.surface}
-          >
+          <IconButton title="Renombrar carpeta" onClick={onRename} iconColor={colors.textSecondary} hoverBg={colors.surface}>
             <Pencil size={16} />
           </IconButton>
-          <IconButton
-            title="Eliminar carpeta"
-            onClick={onDelete}
-            iconColor={colors.error}
-            hoverBg="#fee2e2"
-          >
+          <IconButton title="Mover carpeta" onClick={onMove} iconColor={colors.textSecondary} hoverBg={colors.surface}>
+            <FolderInput size={16} />
+          </IconButton>
+          <IconButton title="Eliminar carpeta" onClick={onDelete} iconColor={colors.error} hoverBg="#fee2e2">
             <Trash2 size={16} />
           </IconButton>
         </div>
@@ -1521,6 +1557,266 @@ function RenameFolderModal({ currentName, onClose, onConfirm }: RenameFolderModa
         </div>
       </ModalCard>
     </Overlay>
+  );
+}
+
+// ── Modal de mover carpeta ────────────────────────────────────────────────────
+
+interface MoveFolderModalProps {
+  folder: GetFolderResponseDto;
+  onClose: () => void;
+  onConfirm: (destFolderId: number | null) => Promise<void>;
+}
+
+function MoveFolderModal({ folder, onClose, onConfirm }: MoveFolderModalProps) {
+  const [pickerFolderId, setPickerFolderId] = useState<number | null>(null);
+  const [pickerBreadcrumb, setPickerBreadcrumb] = useState<Array<{ id: number | null; name: string }>>([
+    { id: null, name: 'Raíz' },
+  ]);
+  const [pickerFolders, setPickerFolders] = useState<GetFolderResponseDto[]>([]);
+  const [pickerLoading, setPickerLoading] = useState(true);
+  const [moving, setMoving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPickerLoading(true);
+    const param = pickerFolderId === null ? undefined : pickerFolderId;
+    foldersService
+      .getFolders(param)
+      .then((folders) => {
+        if (!cancelled) setPickerFolders(folders.filter((f) => f.id !== folder.id));
+      })
+      .catch(() => {
+        if (!cancelled) setPickerFolders([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPickerLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [pickerFolderId, folder.id]);
+
+  function navigateInto(f: GetFolderResponseDto) {
+    setPickerBreadcrumb((prev) => [...prev, { id: f.id, name: f.name }]);
+    setPickerFolderId(f.id);
+  }
+
+  function navigateToCrumb(crumb: { id: number | null; name: string }) {
+    const idx = pickerBreadcrumb.findIndex((b) => b.id === crumb.id);
+    if (idx < 0) return;
+    setPickerBreadcrumb((prev) => prev.slice(0, idx + 1));
+    setPickerFolderId(crumb.id);
+  }
+
+  const isAtCurrentParent = pickerFolderId === folder.parentFolderId;
+
+  async function handleMove(): Promise<void> {
+    setMoving(true);
+    setError(null);
+    try {
+      await onConfirm(pickerFolderId);
+    } catch (err) {
+      setError(getErrorMessage(parseErrorCode(err)));
+      setMoving(false);
+    }
+  }
+
+  return (
+    <Overlay onClose={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%',
+          maxWidth: 520,
+          backgroundColor: colors.bgMain,
+          borderRadius: 12,
+          padding: 24,
+          boxShadow: '0 8px 40px rgba(0,0,0,0.14)',
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: colors.textPrimary }}>
+            Mover &ldquo;{folder.name}&rdquo;
+          </h3>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.textSecondary, display: 'flex', padding: 4 }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <p style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 16 }}>
+          Navega hasta la carpeta de destino y pulsa &ldquo;Mover aquí&rdquo;.
+        </p>
+
+        {/* Picker breadcrumb */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 2,
+            fontSize: 13,
+            marginBottom: 8,
+            padding: '6px 10px',
+            backgroundColor: colors.bgSidebar,
+            borderRadius: 6,
+            border: `1px solid ${colors.border}`,
+          }}
+        >
+          {pickerBreadcrumb.map((crumb, i) => {
+            const isLast = i === pickerBreadcrumb.length - 1;
+            return (
+              <span key={`${String(crumb.id)}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                {i > 0 && <ChevronRight size={12} color={colors.border} />}
+                <button
+                  onClick={() => { if (!isLast) navigateToCrumb(crumb); }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '0 2px',
+                    cursor: isLast ? 'default' : 'pointer',
+                    fontSize: 13,
+                    color: isLast ? colors.textPrimary : colors.accent,
+                    fontWeight: isLast ? 500 : 400,
+                  }}
+                >
+                  {i === 0 ? <Home size={13} /> : crumb.name}
+                </button>
+              </span>
+            );
+          })}
+        </div>
+
+        {/* Picker folder list */}
+        <div
+          style={{
+            border: `1px solid ${colors.border}`,
+            borderRadius: 8,
+            overflow: 'hidden',
+            minHeight: 140,
+            maxHeight: 260,
+            overflowY: 'auto',
+          }}
+        >
+          {pickerLoading ? (
+            <div style={{ padding: '20px 16px', textAlign: 'center' }}>
+              <div className="hdb-spinner" style={{ margin: '0 auto' }} />
+            </div>
+          ) : pickerFolders.length === 0 ? (
+            <div style={{ padding: '20px 16px', textAlign: 'center', fontSize: 13, color: colors.textSecondary }}>
+              No hay subcarpetas aquí
+            </div>
+          ) : (
+            pickerFolders.map((f, i) => (
+              <PickerFolderRow
+                key={f.id}
+                folder={f}
+                isLast={i === pickerFolders.length - 1}
+                onClick={() => navigateInto(f)}
+              />
+            ))
+          )}
+        </div>
+
+        {/* Destination label */}
+        <p style={{ fontSize: 12, color: colors.textSecondary, marginTop: 10 }}>
+          Destino:{' '}
+          <strong style={{ color: colors.textPrimary }}>
+            {pickerBreadcrumb[pickerBreadcrumb.length - 1]?.name ?? 'Raíz'}
+          </strong>
+          {isAtCurrentParent && (
+            <span style={{ color: colors.textSecondary }}> (ubicación actual)</span>
+          )}
+        </p>
+
+        {error && <p style={{ fontSize: 13, color: colors.error, marginTop: 8 }}>{error}</p>}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+          <button
+            onClick={onClose}
+            disabled={moving}
+            style={{
+              height: 36,
+              padding: '0 16px',
+              backgroundColor: colors.bgMain,
+              color: colors.textPrimary,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 8,
+              fontSize: 14,
+              cursor: moving ? 'not-allowed' : 'pointer',
+              opacity: moving ? 0.6 : 1,
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => { void handleMove(); }}
+            disabled={isAtCurrentParent || moving}
+            style={{
+              height: 36,
+              padding: '0 16px',
+              backgroundColor: colors.accent,
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 500,
+              cursor: isAtCurrentParent || moving ? 'not-allowed' : 'pointer',
+              opacity: isAtCurrentParent ? 0.5 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            {moving ? (
+              <>
+                <div className="hdb-spinner" />
+                Moviendo...
+              </>
+            ) : (
+              <>
+                <FolderInput size={15} />
+                Mover aquí
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+interface PickerFolderRowProps {
+  folder: GetFolderResponseDto;
+  isLast: boolean;
+  onClick: () => void;
+}
+
+function PickerFolderRow({ folder, isLast, onClick }: PickerFolderRowProps) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '10px 14px',
+        cursor: 'pointer',
+        backgroundColor: hovered ? colors.accentSoft : colors.bgMain,
+        borderBottom: isLast ? 'none' : `1px solid ${colors.border}`,
+        userSelect: 'none',
+      }}
+    >
+      <FolderIcon size={15} color={colors.accent} />
+      <span style={{ flex: 1, fontSize: 14, color: colors.textPrimary }}>{folder.name}</span>
+      <ChevronRight size={14} color={colors.textSecondary} />
+    </div>
   );
 }
 

@@ -38,6 +38,15 @@ export async function renameFolder(folderId: number, newName: string): Promise<G
   return data.data;
 }
 
+export async function moveFolder(folderId: number, newParentFolderId: number | null): Promise<GetFolderResponseDto> {
+  const { data } = await apiClient.patch<ApiResponse<GetFolderResponseDto>>(
+    `/api/folders/${folderId}`,
+    { newParentFolderId },
+  );
+  if (!data.result || !data.data) throw new Error(String(data.errorCode ?? 9999));
+  return data.data;
+}
+
 export async function deleteFolder(folderId: number): Promise<void> {
   const { data } = await apiClient.delete<ApiResponse<DeleteFolderResponseDto>>(
     `/api/folders/${folderId}`,
