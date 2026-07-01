@@ -434,96 +434,99 @@ function PermissionsPanel({ userId }: PermissionsPanelProps) {
     <div
       style={{
         marginTop: 16,
-        paddingTop: 16,
-        borderTop: `1px solid ${colors.border}`,
+        backgroundColor: colors.bgMain,
+        border: `1px solid ${colors.border}`,
+        borderRadius: 8,
+        padding: '14px 16px',
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 12,
-        }}
-      >
-        <span style={{ fontSize: 12, fontWeight: 700, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          Permisos de módulos
-        </span>
-        <button
-          onClick={() => void handleSave()}
-          disabled={!isDirty || saving || loading}
-          style={{
-            padding: '5px 14px',
-            fontSize: 12,
-            fontWeight: 600,
-            color: '#fff',
-            backgroundColor: !isDirty || saving || loading ? colors.textSecondary : colors.accent,
-            border: 'none',
-            borderRadius: 6,
-            cursor: !isDirty || saving || loading ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {saving ? 'Guardando…' : 'Guardar'}
-        </button>
-      </div>
+      {/* Título */}
+      <span style={{ fontSize: 12, fontWeight: 700, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        Permisos de módulos
+      </span>
 
-      {loading ? (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {Array.from({ length: 9 }).map((_, i) => (
-            <div key={i} className="hdb-skeleton" style={{ width: 120, height: 28, borderRadius: 6 }} />
-          ))}
-        </div>
-      ) : !draft ? (
-        <span style={{ fontSize: 13, color: colors.error }}>No se pudieron cargar los permisos.</span>
-      ) : (
-        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-          {([['Usuario', userModules], ['Admin', adminModules]] as const).map(([groupName, modules]) => (
-            <div key={groupName}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: colors.textSecondary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                {groupName}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {modules.map(({ key, label }) => {
-                  const enabled = draft[key];
-                  return (
-                    <label
-                      key={key}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}
-                    >
-                      <div
-                        onClick={() => toggle(key)}
-                        style={{
-                          width: 36,
-                          height: 20,
-                          borderRadius: 10,
-                          backgroundColor: enabled ? colors.accent : colors.border,
-                          position: 'relative',
-                          transition: 'background-color 0.2s',
-                          flexShrink: 0,
-                          cursor: 'pointer',
-                        }}
+      {/* Cuerpo */}
+      <div style={{ marginTop: 12 }}>
+        {loading ? (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {Array.from({ length: 9 }).map((_, i) => (
+              <div key={i} className="hdb-skeleton" style={{ width: 130, height: 24, borderRadius: 6 }} />
+            ))}
+          </div>
+        ) : !draft ? (
+          <span style={{ fontSize: 13, color: colors.error }}>No se pudieron cargar los permisos.</span>
+        ) : (
+          <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+            {([['Usuario', userModules], ['Admin', adminModules]] as const).map(([groupName, modules]) => (
+              <div key={groupName}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: colors.textSecondary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {groupName}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {modules.map(({ key, label }) => {
+                    const enabled = draft[key];
+                    return (
+                      <label
+                        key={key}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}
                       >
                         <div
+                          onClick={() => toggle(key)}
                           style={{
-                            position: 'absolute',
-                            top: 3,
-                            left: enabled ? 19 : 3,
-                            width: 14,
-                            height: 14,
-                            borderRadius: '50%',
-                            backgroundColor: '#fff',
-                            transition: 'left 0.2s',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                            width: 36,
+                            height: 20,
+                            borderRadius: 10,
+                            backgroundColor: enabled ? colors.accent : colors.border,
+                            position: 'relative',
+                            transition: 'background-color 0.2s',
+                            flexShrink: 0,
+                            cursor: 'pointer',
                           }}
-                        />
-                      </div>
-                      <span style={{ fontSize: 13, color: colors.textPrimary }}>{label}</span>
-                    </label>
-                  );
-                })}
+                        >
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: 3,
+                              left: enabled ? 19 : 3,
+                              width: 14,
+                              height: 14,
+                              borderRadius: '50%',
+                              backgroundColor: '#fff',
+                              transition: 'left 0.2s',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontSize: 13, color: colors.textPrimary }}>{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Pie: botón guardar */}
+      {!loading && draft && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+          <button
+            onClick={() => void handleSave()}
+            disabled={!isDirty || saving}
+            style={{
+              padding: '6px 16px',
+              fontSize: 12,
+              fontWeight: 600,
+              color: '#fff',
+              backgroundColor: !isDirty || saving ? colors.textSecondary : colors.accent,
+              border: 'none',
+              borderRadius: 6,
+              cursor: !isDirty || saving ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {saving ? 'Guardando…' : 'Guardar'}
+          </button>
         </div>
       )}
     </div>
