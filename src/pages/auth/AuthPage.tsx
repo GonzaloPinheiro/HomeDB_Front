@@ -5,7 +5,7 @@ import {
   useState,
 } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Database } from 'lucide-react';
+import { Database, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import * as authService from '../../services/authService';
@@ -201,15 +201,12 @@ export default function AuthPage() {
                 required
               />
             </Field>
-            <Field label="Contraseña">
-              <StyledInput
-                type="password"
-                autoComplete="current-password"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                required
-              />
-            </Field>
+            <PasswordField
+              label="Contraseña"
+              autoComplete="current-password"
+              value={loginPassword}
+              onChange={(e) => setLoginPassword(e.target.value)}
+            />
             {error && <ErrorMsg>{error}</ErrorMsg>}
             <SubmitButton loading={submitting} loadingText="Iniciando sesión...">
               Iniciar sesión
@@ -232,24 +229,18 @@ export default function AuthPage() {
                 required
               />
             </Field>
-            <Field label="Contraseña">
-              <StyledInput
-                type="password"
-                autoComplete="new-password"
-                value={regPassword}
-                onChange={(e) => setRegPassword(e.target.value)}
-                required
-              />
-            </Field>
-            <Field label="Repetir contraseña">
-              <StyledInput
-                type="password"
-                autoComplete="new-password"
-                value={regConfirm}
-                onChange={(e) => setRegConfirm(e.target.value)}
-                required
-              />
-            </Field>
+            <PasswordField
+              label="Contraseña"
+              autoComplete="new-password"
+              value={regPassword}
+              onChange={(e) => setRegPassword(e.target.value)}
+            />
+            <PasswordField
+              label="Repetir contraseña"
+              autoComplete="new-password"
+              value={regConfirm}
+              onChange={(e) => setRegConfirm(e.target.value)}
+            />
             {error && <ErrorMsg>{error}</ErrorMsg>}
             <SubmitButton loading={submitting} loadingText="Registrando...">
               Registrarse
@@ -272,33 +263,24 @@ export default function AuthPage() {
                 required
               />
             </Field>
-            <Field label="Contraseña actual">
-              <StyledInput
-                type="password"
-                autoComplete="current-password"
-                value={cpOldPassword}
-                onChange={(e) => setCpOldPassword(e.target.value)}
-                required
-              />
-            </Field>
-            <Field label="Nueva contraseña">
-              <StyledInput
-                type="password"
-                autoComplete="new-password"
-                value={cpNewPassword}
-                onChange={(e) => setCpNewPassword(e.target.value)}
-                required
-              />
-            </Field>
-            <Field label="Repetir nueva contraseña">
-              <StyledInput
-                type="password"
-                autoComplete="new-password"
-                value={cpConfirm}
-                onChange={(e) => setCpConfirm(e.target.value)}
-                required
-              />
-            </Field>
+            <PasswordField
+              label="Contraseña actual"
+              autoComplete="current-password"
+              value={cpOldPassword}
+              onChange={(e) => setCpOldPassword(e.target.value)}
+            />
+            <PasswordField
+              label="Nueva contraseña"
+              autoComplete="new-password"
+              value={cpNewPassword}
+              onChange={(e) => setCpNewPassword(e.target.value)}
+            />
+            <PasswordField
+              label="Repetir nueva contraseña"
+              autoComplete="new-password"
+              value={cpConfirm}
+              onChange={(e) => setCpConfirm(e.target.value)}
+            />
             {error && <ErrorMsg>{error}</ErrorMsg>}
             <SubmitButton loading={submitting} loadingText="Cambiando contraseña...">
               Cambiar contraseña
@@ -416,5 +398,53 @@ function ErrorMsg({ children }: { children: ReactNode }) {
     <p style={{ fontSize: 13, color: colors.error, textAlign: 'center' }}>
       {children}
     </p>
+  );
+}
+
+function PasswordField({
+  label,
+  value,
+  onChange,
+  autoComplete,
+}: {
+  label: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  autoComplete?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <Field label={label}>
+      <div style={{ position: 'relative' }}>
+        <StyledInput
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={onChange}
+          autoComplete={autoComplete}
+          required
+          style={{ paddingRight: 36 }}
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => setShow((v) => !v)}
+          style={{
+            position: 'absolute',
+            right: 10,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: colors.textSecondary,
+            display: 'flex',
+            alignItems: 'center',
+            padding: 0,
+          }}
+        >
+          {show ? <EyeOff size={15} /> : <Eye size={15} />}
+        </button>
+      </div>
+    </Field>
   );
 }

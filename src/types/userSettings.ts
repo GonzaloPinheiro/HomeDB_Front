@@ -18,3 +18,13 @@ export interface UpdateProfileResponseDto {
   username: string;
   email: string;
 }
+
+export interface UserAdminSettingsDto {
+  storageLimitBytes: number | null;
+  maxFileSizeBytes: number | null;
+}
+
+export interface UserProfileOverviewDto {
+  settings: UserSettingsDto;
+  limits: UserAdminSettingsDto;
+}

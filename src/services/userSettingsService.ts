@@ -5,6 +5,7 @@ import {
   type UpdateUserSettingsDto,
   type UpdateProfileDto,
   type UpdateProfileResponseDto,
+  type UserProfileOverviewDto,
 } from '../types/userSettings';
 
 export async function getMySettings(): Promise<UserSettingsDto> {
@@ -21,6 +22,12 @@ export async function updateMySettings(dto: UpdateUserSettingsDto): Promise<User
 
 export async function updateMyProfile(dto: UpdateProfileDto): Promise<UpdateProfileResponseDto> {
   const res = await apiClient.patch<ApiResponse<UpdateProfileResponseDto>>('/api/users/me', dto);
+  if (!res.data.result || res.data.data === null) throw new Error(String(res.data.errorCode ?? 9999));
+  return res.data.data;
+}
+
+export async function getMySettingsOverview(): Promise<UserProfileOverviewDto> {
+  const res = await apiClient.get<ApiResponse<UserProfileOverviewDto>>('/api/users/me/settings-overview');
   if (!res.data.result || res.data.data === null) throw new Error(String(res.data.errorCode ?? 9999));
   return res.data.data;
 }

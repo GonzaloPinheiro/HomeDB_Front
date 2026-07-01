@@ -9,6 +9,8 @@ import {
   ChevronUp,
   AlertTriangle,
   UserPlus,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { colors } from '../../lib/theme';
@@ -191,6 +193,8 @@ function CreateUserModal({ onConfirm, onCancel, loading }: CreateUserModalProps)
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const passwordMismatch = confirmPassword.length > 0 && password !== confirmPassword;
   const canSubmit = username.trim() !== '' && password.trim() !== '' && password === confirmPassword;
@@ -284,15 +288,25 @@ function CreateUserModal({ onConfirm, onCancel, loading }: CreateUserModalProps)
             >
               Contraseña
             </label>
-            <input
-              type="password"
-              placeholder="Introduce la contraseña"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
-              disabled={loading}
-              style={modalInputStyle}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Introduce la contraseña"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
+                disabled={loading}
+                style={{ ...modalInputStyle, paddingRight: 36 }}
+              />
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => setShowPassword((v) => !v)}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: colors.textSecondary, display: 'flex', alignItems: 'center', padding: 0 }}
+              >
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
           </div>
           <div>
             <label
@@ -300,18 +314,25 @@ function CreateUserModal({ onConfirm, onCancel, loading }: CreateUserModalProps)
             >
               Confirmar contraseña
             </label>
-            <input
-              type="password"
-              placeholder="Repite la contraseña"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
-              disabled={loading}
-              style={{
-                ...modalInputStyle,
-                border: `1px solid ${passwordMismatch ? colors.error : colors.border}`,
-              }}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                placeholder="Repite la contraseña"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
+                disabled={loading}
+                style={{ ...modalInputStyle, paddingRight: 36, border: `1px solid ${passwordMismatch ? colors.error : colors.border}` }}
+              />
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => setShowConfirmPassword((v) => !v)}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: colors.textSecondary, display: 'flex', alignItems: 'center', padding: 0 }}
+              >
+                {showConfirmPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
             {passwordMismatch && (
               <span style={{ fontSize: 12, color: colors.error, marginTop: 4, display: 'block' }}>
                 Las contraseñas no coinciden

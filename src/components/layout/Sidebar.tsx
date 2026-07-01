@@ -21,20 +21,24 @@ import { type StorageStatisticsDto } from '../../types/files';
 
 // ── Widget de almacenamiento ──────────────────────────────────────────────────
 
-const STORAGE_LIMIT_MB = 10 * 1024; // 10 GB en MB
+const STORAGE_LIMIT_BYTES_DEFAULT = 10 * 1024 * 1024 * 1024; // 10 GB — fallback si la API no responde
 
-function formatStorageSize(mb: number): string {
-  if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`;
+function formatStorageSize(bytes: number): string {
+  const gb = bytes / (1024 * 1024 * 1024);
+  const mb = bytes / (1024 * 1024);
+  const kb = bytes / 1024;
+  if (gb >= 1) return `${gb.toFixed(2)} GB`;
   if (mb >= 1) return `${mb.toFixed(1)} MB`;
-  return `${(mb * 1024).toFixed(0)} KB`;
+  return `${kb.toFixed(0)} KB`;
 }
 
 interface StorageWidgetProps {
   stats: StorageStatisticsDto | null;
   isLoading: boolean;
+  storageLimitBytes: number | null;
 }
 
-function StorageWidget({ stats, isLoading }: StorageWidgetProps) {
+function StorageWidget({ stats, isLoading, storageLimitBytes }: StorageWidgetProps) {
   if (isLoading || stats === null) {
     return (
       <div
@@ -51,8 +55,10 @@ function StorageWidget({ stats, isLoading }: StorageWidgetProps) {
     );
   }
 
-  const pct = Math.min((stats.totalSizeMb / STORAGE_LIMIT_MB) * 100, 100);
-  const usedText = formatStorageSize(stats.totalSizeMb);
+  const limitBytes = storageLimitBytes ?? STORAGE_LIMIT_BYTES_DEFAULT;
+  const usedBytes = stats.totalSizeBytes;
+  const pct = Math.min((usedBytes / limitBytes) * 100, 100);
+  const usedText = formatStorageSize(usedBytes);
 
   return (
     <div
@@ -100,7 +106,7 @@ function StorageWidget({ stats, isLoading }: StorageWidgetProps) {
       </div>
 
       <span style={{ fontSize: 11, color: colors.textSecondary }}>
-        {usedText} / 10 GB
+        {usedText} / {formatStorageSize(limitBytes)}
       </span>
     </div>
   );
@@ -137,7 +143,7 @@ const comingSoonItems: ComingSoonItem[] = [
 export default function Sidebar() {
   const location = useLocation();
   const { user } = useAuth();
-  const { stats, isLoading, refreshStats } = useStorage();
+  const { stats, isLoading, storageLimitBytes, refreshStats } = useStorage();
 
   useEffect(() => {
     refreshStats();
@@ -290,7 +296,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Widget de almacenamiento */}
-      <StorageWidget stats={stats} isLoading={isLoading} />
+      <StorageWidget stats={stats} isLoading={isLoading} storageLimitBytes={storageLimitBytes} />
     </aside>
   );
 }
