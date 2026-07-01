@@ -454,7 +454,6 @@ function PermissionsPanel({ userId }: PermissionsPanelProps) {
   return (
     <div
       style={{
-        marginTop: 16,
         backgroundColor: colors.bgMain,
         border: `1px solid ${colors.border}`,
         borderRadius: 8,
@@ -531,6 +530,183 @@ function PermissionsPanel({ userId }: PermissionsPanelProps) {
 
       {/* Pie: botón guardar */}
       {!loading && draft && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+          <button
+            onClick={() => void handleSave()}
+            disabled={!isDirty || saving}
+            style={{
+              padding: '6px 16px',
+              fontSize: 12,
+              fontWeight: 600,
+              color: '#fff',
+              backgroundColor: !isDirty || saving ? colors.textSecondary : colors.accent,
+              border: 'none',
+              borderRadius: 6,
+              cursor: !isDirty || saving ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {saving ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── StorageSettingsPanel ──────────────────────────────────────────────────────
+
+const DEFAULT_STORAGE_GB = 10;
+const DEFAULT_FILE_MB    = 500;
+
+function bytesToGb(bytes: number | null): string {
+  if (bytes === null) return '';
+  return String(bytes / (1024 * 1024 * 1024));
+}
+
+function bytesToMb(bytes: number | null): string {
+  if (bytes === null) return '';
+  return String(bytes / (1024 * 1024));
+}
+
+function gbToBytes(val: string): number | null {
+  const n = parseFloat(val);
+  return val.trim() === '' || isNaN(n) ? null : Math.round(n * 1024 * 1024 * 1024);
+}
+
+function mbToBytes(val: string): number | null {
+  const n = parseFloat(val);
+  return val.trim() === '' || isNaN(n) ? null : Math.round(n * 1024 * 1024);
+}
+
+interface StorageSettingsPanelProps {
+  userId: number;
+}
+
+function StorageSettingsPanel({ userId }: StorageSettingsPanelProps) {
+  const [storageGb, setStorageGb]   = useState('');
+  const [fileMb,    setFileMb]      = useState('');
+  const [origStorageGb, setOrigStorageGb] = useState('');
+  const [origFileMb,    setOrigFileMb]    = useState('');
+  const [loading,  setLoading]  = useState(true);
+  const [saving,   setSaving]   = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    usersService
+      .getUserAdminSettings(userId)
+      .then((data) => {
+        const gb = bytesToGb(data.storageLimitBytes);
+        const mb = bytesToMb(data.maxFileSizeBytes);
+        setStorageGb(gb);
+        setFileMb(mb);
+        setOrigStorageGb(gb);
+        setOrigFileMb(mb);
+      })
+      .catch(() => { /* deja los campos vacíos */ })
+      .finally(() => setLoading(false));
+  }, [userId]);
+
+  const isDirty = storageGb !== origStorageGb || fileMb !== origFileMb;
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const updated = await usersService.updateUserAdminSettings(userId, {
+        storageLimitBytes: gbToBytes(storageGb),
+        maxFileSizeBytes:  mbToBytes(fileMb),
+      });
+      const gb = bytesToGb(updated.storageLimitBytes);
+      const mb = bytesToMb(updated.maxFileSizeBytes);
+      setStorageGb(gb); setOrigStorageGb(gb);
+      setFileMb(mb);    setOrigFileMb(mb);
+      toast.success('Límites actualizados correctamente.');
+    } catch (err: unknown) {
+      const n = err instanceof Error ? parseInt(err.message, 10) : 9999;
+      toast.error(getErrorMessage(isNaN(n) ? 9999 : n));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const panelInputStyle: CSSProperties = {
+    width: '100%',
+    padding: '6px 10px',
+    fontSize: 13,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 6,
+    color: colors.textPrimary,
+    backgroundColor: colors.bgMain,
+    outline: 'none',
+    boxSizing: 'border-box',
+  };
+
+  return (
+    <div
+      style={{
+        width: 240,
+        flexShrink: 0,
+        backgroundColor: colors.bgMain,
+        border: `1px solid ${colors.border}`,
+        borderRadius: 8,
+        padding: '14px 16px',
+        display: 'flex',
+        flexDirection: 'column',
+        boxSizing: 'border-box' as const,
+      }}
+    >
+      {/* Título */}
+      <span style={{ fontSize: 12, fontWeight: 700, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        Límites de almacenamiento
+      </span>
+
+      {/* Campos */}
+      <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
+        {loading ? (
+          <>
+            <div className="hdb-skeleton" style={{ height: 52, borderRadius: 6 }} />
+            <div className="hdb-skeleton" style={{ height: 52, borderRadius: 6 }} />
+          </>
+        ) : (
+          <>
+            <div>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.textSecondary, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Espacio máximo (GB)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                placeholder={`${DEFAULT_STORAGE_GB} (por defecto)`}
+                value={storageGb}
+                onChange={(e) => setStorageGb(e.target.value)}
+                disabled={saving}
+                style={panelInputStyle}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.textSecondary, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Tamaño máx. de archivo (MB)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                placeholder={`${DEFAULT_FILE_MB} (por defecto)`}
+                value={fileMb}
+                onChange={(e) => setFileMb(e.target.value)}
+                disabled={saving}
+                style={panelInputStyle}
+              />
+            </div>
+            <p style={{ fontSize: 11, color: colors.textSecondary, margin: 0, lineHeight: 1.4 }}>
+              Vacío = usar límite global
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* Botón guardar */}
+      {!loading && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
           <button
             onClick={() => void handleSave()}
@@ -1105,7 +1281,12 @@ export default function AdminUsersPage() {
                                   </div>
                                 </div>
                               </div>
-                              <PermissionsPanel userId={u.id} />
+                              <div style={{ display: 'flex', gap: 12, marginTop: 16, alignItems: 'stretch' }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <PermissionsPanel userId={u.id} />
+                                </div>
+                                <StorageSettingsPanel userId={u.id} />
+                              </div>
                             </td>
                           </tr>
                         )}

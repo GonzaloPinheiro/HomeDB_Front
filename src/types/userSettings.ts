@@ -24,6 +24,11 @@ export interface UserAdminSettingsDto {
   maxFileSizeBytes: number | null;
 }
 
+export interface UpdateUserAdminSettingsDto {
+  storageLimitBytes: number | null;
+  maxFileSizeBytes: number | null;
+}
+
 export interface UserProfileOverviewDto {
   settings: UserSettingsDto;
   limits: UserAdminSettingsDto;

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
 import * as statisticsService from '../services/statisticsService';
 import * as userSettingsService from '../services/userSettingsService';
 import { type StorageStatisticsDto } from '../types/files';
@@ -17,18 +17,16 @@ export function StorageProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [storageLimitBytes, setStorageLimitBytes] = useState<number | null>(null);
 
-  useEffect(() => {
-    userSettingsService
-      .getMySettingsOverview()
-      .then((data) => setStorageLimitBytes(data.limits.storageLimitBytes))
-      .catch(() => { /* silencioso — el widget usa el valor por defecto */ });
-  }, []);
-
   const refreshStats = useCallback(() => {
     setIsLoading(true);
-    statisticsService
-      .getStorageStats()
-      .then((data) => setStats(data))
+    Promise.all([
+      statisticsService.getStorageStats(),
+      userSettingsService.getMySettingsOverview(),
+    ])
+      .then(([stats, overview]) => {
+        setStats(stats);
+        setStorageLimitBytes(overview.limits.storageLimitBytes);
+      })
       .catch(() => {
         /* silencioso — el widget simplemente no actualiza */
       })
