@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { colors, layout } from '../../lib/theme';
 import { showComingSoon } from '../ui/ComingSoonToast';
 import EnvSelector from '../ui/EnvSelector';
+import SettingsModal from './SettingsModal';
 
 interface HeaderProps {
   pageTitle: string;
@@ -17,6 +18,7 @@ export default function Header({ pageTitle }: HeaderProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,6 +39,8 @@ export default function Header({ pageTitle }: HeaderProps) {
   }
 
   return (
+    <>
+    {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     <header
       style={{
         position: 'fixed',
@@ -112,7 +116,7 @@ export default function Header({ pageTitle }: HeaderProps) {
               label="Ajustes"
               onClick={() => {
                 setOpen(false);
-                showComingSoon();
+                setSettingsOpen(true);
               }}
             />
             <div
@@ -124,6 +128,7 @@ export default function Header({ pageTitle }: HeaderProps) {
       </div>
       </div>
     </header>
+    </>
   );
 }
 
