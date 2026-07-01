@@ -15,7 +15,6 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { colors, layout } from '../../lib/theme';
-import { showComingSoon } from '../ui/ComingSoonToast';
 import { useStorage } from '../../context/StorageContext';
 import { type StorageStatisticsDto } from '../../types/files';
 import { type UserModulePermissionsDto } from '../../types/modulePermissions';
