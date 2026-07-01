@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { apiClient, setAccessToken } from '../lib/apiClient';
 import { type ApiResponse } from '../types/api';
 import { type LoginRequest, type TokenResponseDto } from '../types/auth';
+import { type UserModulePermissionsDto } from '../types/modulePermissions';
+import * as modulePermissionsService from '../services/modulePermissionsService';
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -13,6 +15,7 @@ interface AuthUser {
 
 interface AuthContextValue {
   user: AuthUser | null;
+  permissions: UserModulePermissionsDto | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (credentials: LoginRequest) => Promise<void>;
@@ -62,7 +65,23 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [permissions, setPermissions] = useState<UserModulePermissionsDto | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Aplica el token: guarda el access token, decodifica el usuario y carga sus permisos.
+  async function applyToken(token: string): Promise<void> {
+    setAccessToken(token);
+    const payload = decodeJwt(token);
+    if (!payload) return;
+    setUser(userFromPayload(payload));
+    try {
+      const perms = await modulePermissionsService.getMyPermissions();
+      setPermissions(perms);
+    } catch {
+      // Si falla la carga de permisos, el sidebar mostrará todo (el backend sigue aplicando restricciones)
+      setPermissions(null);
+    }
+  }
 
   // Al montar, intenta restaurar la sesión usando la cookie de refresh token.
   // El navegador la envía automáticamente gracias a withCredentials: true.
@@ -74,9 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           { refreshToken: '' },
         );
         if (data.result && data.data) {
-          setAccessToken(data.data.accessToken);
-          const payload = decodeJwt(data.data.accessToken);
-          if (payload) setUser(userFromPayload(payload));
+          await applyToken(data.data.accessToken);
         }
       } catch {
         // Sin sesión previa: el usuario deberá iniciar sesión
@@ -94,9 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!data.result || !data.data) {
       throw new Error(String(data.errorCode ?? 9999));
     }
-    setAccessToken(data.data.accessToken);
-    const payload = decodeJwt(data.data.accessToken);
-    if (payload) setUser(userFromPayload(payload));
+    await applyToken(data.data.accessToken);
   }
 
   async function logout(): Promise<void> {
@@ -107,6 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Si falla el logout en el servidor, se limpia igualmente el estado local
     }
     setUser(null);
+    setPermissions(null);
   }
 
   async function refreshToken(): Promise<boolean> {
@@ -116,9 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         { refreshToken: '' },
       );
       if (!data.result || !data.data) return false;
-      setAccessToken(data.data.accessToken);
-      const payload = decodeJwt(data.data.accessToken);
-      if (payload) setUser(userFromPayload(payload));
+      await applyToken(data.data.accessToken);
       return true;
     } catch {
       return false;
@@ -129,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        permissions,
         isAuthenticated: user !== null,
         isLoading,
         login,

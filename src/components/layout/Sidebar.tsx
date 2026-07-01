@@ -18,6 +18,7 @@ import { colors, layout } from '../../lib/theme';
 import { showComingSoon } from '../ui/ComingSoonToast';
 import { useStorage } from '../../context/StorageContext';
 import { type StorageStatisticsDto } from '../../types/files';
+import { type UserModulePermissionsDto } from '../../types/modulePermissions';
 
 // ── Widget de almacenamiento ──────────────────────────────────────────────────
 
@@ -112,38 +113,33 @@ function StorageWidget({ stats, isLoading, storageLimitBytes }: StorageWidgetPro
   );
 }
 
-// ── Tipos de navegación ────────────────────────────────────────────────────────
+// ── Items de navegación ────────────────────────────────────────────────────────
 
-interface ActiveItem {
+interface NavItemDef {
   label: string;
   icon: LucideIcon;
-  path: string;
+  permissionKey: keyof UserModulePermissionsDto;
+  path?: string;       // ruta real disponible para el usuario actual
+  adminPath?: string;  // ruta real solo para Admin; si no es admin se muestra como "próximamente"
 }
 
-interface ComingSoonItem {
-  label: string;
-  icon: LucideIcon;
-}
-
-const activeItems: ActiveItem[] = [
-  { label: 'Mis archivos', icon: FolderOpen, path: '/files' },
-];
-
-const comingSoonItems: ComingSoonItem[] = [
-  { label: 'Monitor del sistema', icon: Activity },
-  { label: 'Gestión de usuarios', icon: Users },
-  { label: 'Gestión de roles', icon: ShieldCheck },
-  { label: 'Registro de gastos', icon: Receipt },
-  { label: 'Inversiones', icon: TrendingUp },
-  { label: 'Logs del sistema', icon: ScrollText },
-  { label: 'Audit logs', icon: ClipboardList },
-  { label: 'Scripts remotos', icon: Terminal },
+const NAV_ITEMS: NavItemDef[] = [
+  { label: 'Mis archivos',         icon: FolderOpen,   permissionKey: 'filesEnabled',          path: '/files' },
+  { label: 'Registro de gastos',   icon: Receipt,       permissionKey: 'expensesEnabled' },
+  { label: 'Inversiones',          icon: TrendingUp,    permissionKey: 'investmentsEnabled' },
+  { label: 'Monitor del sistema',  icon: Activity,      permissionKey: 'systemMonitorEnabled',  adminPath: '/admin/monitor' },
+  { label: 'Gestión de usuarios',  icon: Users,         permissionKey: 'userManagementEnabled', adminPath: '/admin/users' },
+  { label: 'Gestión de roles',     icon: ShieldCheck,   permissionKey: 'roleManagementEnabled', adminPath: '/admin/roles' },
+  { label: 'Logs del sistema',     icon: ScrollText,    permissionKey: 'systemLogsEnabled',     adminPath: '/admin/logs' },
+  { label: 'Audit logs',           icon: ClipboardList, permissionKey: 'auditLogsEnabled',      adminPath: '/admin/auditlogs' },
+  { label: 'Scripts remotos',      icon: Terminal,      permissionKey: 'remoteScriptsEnabled' },
 ];
 
 export default function Sidebar() {
   const location = useLocation();
   const { user } = useAuth();
   const { stats, isLoading, storageLimitBytes, refreshStats } = useStorage();
+  const { permissions } = useAuth();
 
   useEffect(() => {
     refreshStats();
@@ -184,115 +180,62 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
-        {activeItems.map((item) => {
-          const active =
-            location.pathname === item.path ||
-            location.pathname.startsWith(item.path + '/');
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '8px 10px',
-                borderRadius: 6,
-                marginBottom: 2,
-                fontSize: 14,
-                fontWeight: active ? 600 : 400,
-                color: active ? colors.accent : colors.textPrimary,
-                backgroundColor: active ? colors.accentSoft : 'transparent',
-              }}
-            >
-              <item.icon size={17} />
-              {item.label}
-            </Link>
-          );
-        })}
+        {(() => {
+          // Filtra los items por permisos del usuario.
+          // Si permissions es null (cargando o error), se muestran todos.
+          const visible = NAV_ITEMS.filter((item) => {
+            if (permissions !== null && !permissions[item.permissionKey]) return false;
+            // Items solo-admin se ocultan completamente para usuarios no-admin
+            if (item.adminPath && !item.path && user?.role !== 'Admin') return false;
+            return true;
+          });
 
-        <div
-          style={{
-            height: 1,
-            backgroundColor: colors.border,
-            margin: '12px 4px',
-          }}
-        />
+          const userItems  = visible.filter((i) => !i.adminPath || i.path);
+          const adminItems = visible.filter((i) => i.adminPath && !i.path);
 
-        {comingSoonItems.map((item) => {
-          if (user?.role === 'Admin') {
-            const adminRoutes: Partial<Record<string, string>> = {
-              'Logs del sistema':     '/admin/logs',
-              'Audit logs':           '/admin/auditlogs',
-              'Monitor del sistema':  '/admin/monitor',
-              'Gestión de usuarios':  '/admin/users',
-              'Gestión de roles':     '/admin/roles',
-            };
-            const route = adminRoutes[item.label];
-            if (route) {
-              const isActive = location.pathname.startsWith(route);
-              return (
-                <Link
-                  key={item.label}
-                  to={route}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '8px 10px',
-                    borderRadius: 6,
-                    marginBottom: 2,
-                    fontSize: 14,
-                    fontWeight: isActive ? 600 : 400,
-                    color: isActive ? colors.accent : colors.textPrimary,
-                    backgroundColor: isActive ? colors.accentSoft : 'transparent',
-                  }}
-                >
-                  <item.icon size={17} />
-                  {item.label}
-                </Link>
-              );
-            }
-          }
+          const linkStyle = (active: boolean) => ({
+            display: 'flex' as const,
+            alignItems: 'center' as const,
+            gap: 10,
+            padding: '8px 10px',
+            borderRadius: 6,
+            marginBottom: 2,
+            fontSize: 14,
+            fontWeight: active ? 600 : 400,
+            color: active ? colors.accent : colors.textPrimary,
+            backgroundColor: active ? colors.accentSoft : 'transparent',
+          });
 
           return (
-            <button
-              key={item.label}
-              onClick={showComingSoon}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '8px 10px',
-                borderRadius: 6,
-                marginBottom: 2,
-                border: 'none',
-                backgroundColor: 'transparent',
-                cursor: 'pointer',
-                fontSize: 14,
-                color: colors.textSecondary,
-                textAlign: 'left',
-              }}
-            >
-              <item.icon size={17} />
-              <span style={{ flex: 1 }}>{item.label}</span>
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 600,
-                  color: colors.accentSoftText,
-                  backgroundColor: colors.accentSoft,
-                  padding: '2px 5px',
-                  borderRadius: 4,
-                  flexShrink: 0,
-                }}
-              >
-                Próx.
-              </span>
-            </button>
+            <>
+              {userItems.map((item) => {
+                const routePath = item.path!;
+                const active = location.pathname === routePath || location.pathname.startsWith(routePath + '/');
+                return (
+                  <Link key={routePath} to={routePath} style={linkStyle(active)}>
+                    <item.icon size={17} />
+                    {item.label}
+                  </Link>
+                );
+              })}
+
+              {adminItems.length > 0 && (
+                <div style={{ height: 1, backgroundColor: colors.border, margin: '12px 4px' }} />
+              )}
+
+              {adminItems.map((item) => {
+                const routePath = item.adminPath!;
+                const active = location.pathname.startsWith(routePath);
+                return (
+                  <Link key={routePath} to={routePath} style={linkStyle(active)}>
+                    <item.icon size={17} />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </>
           );
-        })}
+        })()}
       </nav>
 
       {/* Widget de almacenamiento */}
